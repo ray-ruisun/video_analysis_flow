@@ -47,21 +47,21 @@ fi
 OPTIONAL_ARGS=""
 if python -c "import ultralytics" 2>/dev/null; then
     echo "✓ YOLOv8 detected - enabling object detection"
-    OPTIONAL_ARGS="$OPTIONAL_ARGS --enable-yolo"
+    OPTIONAL_ARGS="$OPTIONAL_ARGS --yolo"
 fi
 
 if python -c "import faster_whisper" 2>/dev/null || python -c "import whisper" 2>/dev/null; then
     echo "✓ Whisper detected - enabling ASR"
-    OPTIONAL_ARGS="$OPTIONAL_ARGS --enable-asr"
+    OPTIONAL_ARGS="$OPTIONAL_ARGS --asr"
 fi
 
 # Run analysis
 echo ""
 echo "Running analysis..."
-python src/analyze.py \
+python main.py \
     --videos videos/v1.mp4 videos/v2.mp4 videos/v3.mp4 \
     $AUDIO_ARGS \
-    --report style_report.docx \
+    --output style_report.docx \
     --frames edge \
     $OPTIONAL_ARGS
 

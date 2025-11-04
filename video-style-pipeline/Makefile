@@ -32,9 +32,9 @@ run:
 		echo "ERROR: Please place v1.mp4, v2.mp4, v3.mp4 in videos/ directory"; \
 		exit 1; \
 	fi
-	python src/analyze.py \
+	python main.py \
 		--videos videos/v1.mp4 videos/v2.mp4 videos/v3.mp4 \
-		--report style_report.docx \
+		--output style_report.docx \
 		--frames edge
 
 run-full: extract-audio
@@ -42,13 +42,13 @@ run-full: extract-audio
 		echo "ERROR: Please place v1.mp4, v2.mp4, v3.mp4 in videos/ directory"; \
 		exit 1; \
 	fi
-	python src/analyze.py \
+	python main.py \
 		--videos videos/v1.mp4 videos/v2.mp4 videos/v3.mp4 \
 		--audios work/v1.wav work/v2.wav work/v3.wav \
-		--report style_report_full.docx \
+		--output style_report_full.docx \
 		--frames edge \
-		--enable-yolo \
-		--enable-asr
+		--yolo \
+		--asr
 
 clean:
 	rm -rf work/*

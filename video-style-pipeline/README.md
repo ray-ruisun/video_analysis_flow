@@ -54,52 +54,58 @@ pip install essentia-tensorflow  # For advanced music analysis
 Place 3 human-created videos in the `videos/` directory, then:
 
 ```bash
+# Method 1: Shell script / Shell脚本
 ./analyze.sh
+
+# Method 2: Python main / Python主入口
+python main.py -v videos/v1.mp4 videos/v2.mp4 videos/v3.mp4 -o report.docx
+
+# Method 3: Makefile
+make run
 ```
 
-Or use the Python script directly:
-
-```bash
-python src/analyze.py \
-  --videos videos/v1.mp4 videos/v2.mp4 videos/v3.mp4 \
-  --report output_report.docx
-```
-
-### With Audio Pre-extraction
+### With Audio Pre-extraction / 带音频提取
 
 For better audio analysis, extract audio first:
 
 ```bash
-# Extract audio (22.05kHz mono wav)
-ffmpeg -i videos/v1.mp4 -ar 22050 -ac 1 work/v1.wav
-ffmpeg -i videos/v2.mp4 -ar 22050 -ac 1 work/v2.wav
-ffmpeg -i videos/v3.mp4 -ar 22050 -ac 1 work/v3.wav
+# Extract audio / 提取音频 (22.05kHz mono wav)
+make extract-audio
 
-python src/analyze.py \
-  --videos videos/v1.mp4 videos/v2.mp4 videos/v3.mp4 \
-  --audios work/v1.wav work/v2.wav work/v3.wav \
-  --report output_report.docx
+# Then run / 然后运行
+python main.py -v videos/v1.mp4 videos/v2.mp4 videos/v3.mp4 \
+               -a work/v1.wav work/v2.wav work/v3.wav \
+               -o report.docx
 ```
 
-### Enable Optional Features
+### Enable Optional Features / 启用可选功能
 
 ```bash
-python src/analyze.py \
-  --videos videos/v1.mp4 videos/v2.mp4 videos/v3.mp4 \
-  --enable-yolo \
-  --enable-asr \
-  --frames edge \
-  --report output_report.docx
+# Enable all features / 启用所有功能
+python main.py -v videos/v1.mp4 videos/v2.mp4 videos/v3.mp4 \
+               --yolo --asr \
+               -o report.docx
+
+# Or use Makefile / 或使用Makefile
+make run-full
 ```
 
-### Options
+### Command-Line Options / 命令行选项
 
-- `--videos`: 3 video paths (required)
-- `--audios`: 3 pre-extracted wav files (optional, recommended)
-- `--report`: Output Word document path (required)
-- `--frames`: Contact sheet style: `mosaic`, `edge`, or `off` (default: `edge`)
-- `--enable-yolo`: Enable YOLOv8 kitchen/utensils detection
-- `--enable-asr`: Enable Whisper ASR for narration analysis
+```bash
+python main.py --help
+```
+
+**Required / 必需:**
+- `-v, --videos`: 3 video paths / 3个视频路径
+- `-o, --output`: Output .docx path / 输出报告路径
+
+**Optional / 可选:**
+- `-a, --audios`: 3 audio wav files / 3个音频文件
+- `--yolo`: Enable YOLOv8 detection / 启用物体检测
+- `--asr`: Enable Whisper ASR / 启用语音识别
+- `--frames`: Screenshot style (edge/mosaic/off) / 截图模式
+- `--work-dir`: Working directory / 工作目录 (default: work)
 
 ## Project Structure
 
