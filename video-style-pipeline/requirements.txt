@@ -1,0 +1,36 @@
+# Core dependencies
+numpy>=1.21.0
+opencv-python>=4.5.0
+pillow>=9.0.0
+python-docx>=0.8.11
+
+# Logging and utilities
+loguru>=0.7.0
+tqdm>=4.65.0
+pyyaml>=6.0
+colorama>=0.4.6
+
+# Audio analysis
+librosa>=0.9.0
+soundfile>=0.11.0
+
+# Optional: YOLOv8 for object detection
+# ultralytics>=8.0.0
+
+# Optional: ASR for narration analysis
+# faster-whisper>=0.9.0
+# openai-whisper>=20231117
+
+# Optional: Advanced scene detection
+# scenedetect[opencv]>=0.6.0
+
+# Optional: Enhanced music analysis
+# essentia-tensorflow>=2.1b6
+
+# Optional: Source separation
+# spleeter>=2.3.0
+# demucs>=4.0.0
+
+# Optional: Advanced white balance
+# opencv-contrib-python>=4.5.0
+
