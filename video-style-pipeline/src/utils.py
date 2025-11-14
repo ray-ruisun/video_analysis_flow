@@ -127,6 +127,6 @@ def get_file_size_mb(path):
         return 0.0
 
 
-# Initialize default logger
-setup_logger()
+# Logger is configured by main.py or pipeline.py
+# No need to initialize here to avoid duplicate handlers
 

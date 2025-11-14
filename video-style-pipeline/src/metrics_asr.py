@@ -2,14 +2,27 @@
 # -*- coding: utf-8 -*-
 """
 Automatic Speech Recognition (ASR) module.
-Transcribes narration and extracts speech rate, catchphrases, and speech patterns.
+
+Transcribes narration using Whisper and extracts speech rate, catchphrases,
+speech patterns, prosody (tone), and emotion analysis.
 """
 
 import os
 import re
 from collections import Counter
 
-# Optional dependency handling
+import numpy as np
+from loguru import logger
+
+# Required dependencies
+try:
+    import soundfile as sf
+except ImportError as e:
+    logger.error(f"soundfile not installed: {e}")
+    logger.error("Install with: pip install soundfile")
+    raise ImportError("soundfile is required. Install with: pip install soundfile")
+
+# ASR implementation - at least one must be available
 ASR_AVAILABLE = False
 ASR_IMPLEMENTATION = None
 
@@ -25,16 +38,32 @@ except ImportError:
     except ImportError:
         pass
 
+if not ASR_AVAILABLE:
+    logger.error("No Whisper implementation found. Install one of:")
+    logger.error("  pip install faster-whisper")
+    logger.error("  pip install openai-whisper")
+    raise ImportError("Whisper is required. Install faster-whisper or openai-whisper")
+
+# Optional: Prosody analysis
 try:
-    import soundfile as sf
-    SOUNDFILE_AVAILABLE = True
+    import parselmouth
+    PRAAT_AVAILABLE = True
 except ImportError:
-    SOUNDFILE_AVAILABLE = False
+    PRAAT_AVAILABLE = False
+    logger.warning("Parselmouth (Praat) not available. Install for prosody analysis: pip install parselmouth")
+
+# Optional: Emotion recognition
+try:
+    from transformers import pipeline as hf_pipeline
+    EMOTION_AVAILABLE = True
+except ImportError:
+    EMOTION_AVAILABLE = False
+    logger.warning("Transformers not available. Install for emotion analysis: pip install transformers torch")
 
 
 def transcribe_audio(audio_path, language="en", model_size="small"):
     """
-    Transcribe audio using Whisper (faster-whisper or OpenAI Whisper).
+    Transcribe audio using Whisper.
     
     Args:
         audio_path: Path to audio file (preferably wav)
@@ -43,25 +72,25 @@ def transcribe_audio(audio_path, language="en", model_size="small"):
         
     Returns:
         dict: Transcription results with text, timing, and metadata
+        
+    Raises:
+        FileNotFoundError: If audio file not found
+        ValueError: If transcription fails
     """
-    if not ASR_AVAILABLE:
-        return {
-            "available": False,
-            "error": "Whisper not installed. Install with: pip install faster-whisper (or openai-whisper)"
-        }
+    if not audio_path:
+        logger.error("Audio path is None or empty")
+        raise ValueError("Audio path is None or empty")
     
-    if not audio_path or not os.path.exists(audio_path):
-        return {
-            "available": False,
-            "error": "Audio file not found"
-        }
+    if not os.path.exists(audio_path):
+        logger.error(f"Audio file not found: {audio_path}")
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
     
     try:
         transcribed_text = ""
         segments_list = []
         
         if ASR_IMPLEMENTATION == "faster-whisper":
-            # faster-whisper implementation (more efficient)
+            logger.debug(f"Using faster-whisper for transcription: {audio_path}")
             model = WhisperModel(model_size, device="cpu", compute_type="int8")
             segments, info = model.transcribe(audio_path, language=language, vad_filter=True)
             
@@ -75,6 +104,7 @@ def transcribe_audio(audio_path, language="en", model_size="small"):
                 })
         
         else:  # openai-whisper
+            logger.debug(f"Using openai-whisper for transcription: {audio_path}")
             model = whisper.load_model(model_size)
             result = model.transcribe(audio_path, language=language)
             transcribed_text = result.get("text", "")
@@ -87,18 +117,21 @@ def transcribe_audio(audio_path, language="en", model_size="small"):
                         "text": seg.get("text", "").strip()
                     })
         
+        if not transcribed_text.strip():
+            logger.warning(f"No transcription obtained from {audio_path}")
+            raise ValueError(f"No transcription obtained from {audio_path}")
+        
+        logger.info(f"Transcription completed: {len(transcribed_text.split())} words")
+        
         return {
-            "available": True,
             "implementation": ASR_IMPLEMENTATION,
             "text": transcribed_text.strip(),
             "segments": segments_list
         }
         
     except Exception as e:
-        return {
-            "available": False,
-            "error": str(e)
-        }
+        logger.error(f"Transcription failed for {audio_path}: {e}")
+        raise
 
 
 def analyze_speech_rate(transcription_result, audio_path):
@@ -111,48 +144,55 @@ def analyze_speech_rate(transcription_result, audio_path):
         
     Returns:
         dict: Speech rate metrics
+        
+    Raises:
+        ValueError: If transcription or audio file is invalid
     """
-    if not transcription_result.get("available"):
-        return {"available": False}
+    if not transcription_result or "text" not in transcription_result:
+        logger.error("Invalid transcription result")
+        raise ValueError("Invalid transcription result")
     
     text = transcription_result.get("text", "")
     
-    # Extract words (alphanumeric + apostrophes)
+    # Extract words
     words = re.findall(r"\b[\w']+\b", text.lower())
     num_words = len(words)
     
+    if num_words == 0:
+        logger.warning("No words found in transcription")
+        raise ValueError("No words found in transcription")
+    
     # Get audio duration
-    duration = None
-    if SOUNDFILE_AVAILABLE and os.path.exists(audio_path):
-        try:
-            info = sf.info(audio_path)
-            duration = info.duration
-        except Exception:
-            pass
+    if not os.path.exists(audio_path):
+        logger.error(f"Audio file not found: {audio_path}")
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+    
+    try:
+        info = sf.info(audio_path)
+        duration = info.duration
+    except Exception as e:
+        logger.error(f"Failed to get audio duration: {e}")
+        raise ValueError(f"Failed to get audio duration: {e}")
+    
+    if duration <= 0:
+        logger.error(f"Invalid audio duration: {duration}")
+        raise ValueError(f"Invalid audio duration: {duration}")
     
     # Calculate rates
-    words_per_second = None
-    words_per_minute = None
-    
-    if duration and duration > 0:
-        words_per_second = num_words / duration
-        words_per_minute = words_per_second * 60
+    words_per_second = num_words / duration
+    words_per_minute = words_per_second * 60
     
     # Classify speech pace
-    if words_per_second:
-        if words_per_second < 1.5:
-            pace = "Slow/Deliberate"
-        elif words_per_second < 2.5:
-            pace = "Moderate"
-        elif words_per_second < 3.5:
-            pace = "Fast"
-        else:
-            pace = "Very fast"
+    if words_per_second < 1.5:
+        pace = "Slow/Deliberate"
+    elif words_per_second < 2.5:
+        pace = "Moderate"
+    elif words_per_second < 3.5:
+        pace = "Fast"
     else:
-        pace = "Unknown"
+        pace = "Very fast"
     
     return {
-        "available": True,
         "num_words": num_words,
         "duration": duration,
         "words_per_second": words_per_second,
@@ -172,9 +212,13 @@ def extract_catchphrases(transcription_result, min_frequency=2, topk=5):
         
     Returns:
         dict: Catchphrases and repeated patterns
+        
+    Raises:
+        ValueError: If transcription is invalid
     """
-    if not transcription_result.get("available"):
-        return {"available": False}
+    if not transcription_result or "text" not in transcription_result:
+        logger.error("Invalid transcription result")
+        raise ValueError("Invalid transcription result")
     
     text = transcription_result.get("text", "")
     
@@ -182,10 +226,11 @@ def extract_catchphrases(transcription_result, min_frequency=2, topk=5):
     words = re.findall(r"\b[\w']+\b", text.lower())
     
     if len(words) < 2:
+        logger.warning("Insufficient words for catchphrase extraction")
         return {
-            "available": True,
             "bigrams": [],
-            "trigrams": []
+            "trigrams": [],
+            "all_catchphrases": []
         }
     
     # Extract bigrams (2-word phrases)
@@ -210,7 +255,6 @@ def extract_catchphrases(transcription_result, min_frequency=2, topk=5):
     all_catchphrases = list(set(top_bigrams + top_trigrams))
     
     return {
-        "available": True,
         "bigrams": top_bigrams,
         "trigrams": top_trigrams,
         "all_catchphrases": all_catchphrases
@@ -227,18 +271,22 @@ def analyze_speech_pauses(transcription_result, min_pause=0.5):
         
     Returns:
         dict: Pause analysis metrics
+        
+    Raises:
+        ValueError: If transcription is invalid
     """
-    if not transcription_result.get("available"):
-        return {"available": False}
+    if not transcription_result or "segments" not in transcription_result:
+        logger.error("Invalid transcription result (missing segments)")
+        raise ValueError("Invalid transcription result (missing segments)")
     
     segments = transcription_result.get("segments", [])
     
     if len(segments) < 2:
         return {
-            "available": True,
             "num_pauses": 0,
             "mean_pause": 0,
-            "max_pause": 0
+            "max_pause": 0,
+            "style": "Continuous speech"
         }
     
     # Calculate gaps between segments
@@ -250,7 +298,6 @@ def analyze_speech_pauses(transcription_result, min_pause=0.5):
     
     if pauses:
         return {
-            "available": True,
             "num_pauses": len(pauses),
             "mean_pause": float(sum(pauses) / len(pauses)),
             "max_pause": float(max(pauses)),
@@ -258,7 +305,6 @@ def analyze_speech_pauses(transcription_result, min_pause=0.5):
         }
     else:
         return {
-            "available": True,
             "num_pauses": 0,
             "mean_pause": 0,
             "max_pause": 0,
@@ -266,7 +312,154 @@ def analyze_speech_pauses(transcription_result, min_pause=0.5):
         }
 
 
-def extract_full_asr_metrics(audio_path, language="en", model_size="small"):
+def analyze_prosody(audio_path):
+    """
+    Analyze speech prosody (tone, pitch, intensity) using Praat.
+    
+    Args:
+        audio_path: Path to audio file
+        
+    Returns:
+        dict: Prosody analysis metrics
+        
+    Raises:
+        ImportError: If Praat (parselmouth) is not available
+        FileNotFoundError: If audio file not found
+    """
+    if not PRAAT_AVAILABLE:
+        logger.error("Parselmouth (Praat) is required for prosody analysis")
+        logger.error("Install with: pip install parselmouth")
+        raise ImportError("Parselmouth (Praat) is required. Install with: pip install parselmouth")
+    
+    if not os.path.exists(audio_path):
+        logger.error(f"Audio file not found: {audio_path}")
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+    
+    try:
+        logger.debug(f"Analyzing prosody with Praat: {audio_path}")
+        sound = parselmouth.Sound(audio_path)
+        
+        # Extract pitch
+        pitch = sound.to_pitch()
+        pitch_values = pitch.selected_array['frequency']
+        pitch_values = pitch_values[pitch_values > 0]  # Remove unvoiced
+        
+        if len(pitch_values) == 0:
+            logger.warning("No pitch values extracted")
+            mean_pitch = 0
+            pitch_std = 0
+        else:
+            mean_pitch = float(np.mean(pitch_values))
+            pitch_std = float(np.std(pitch_values))
+        
+        # Extract intensity
+        intensity = sound.to_intensity()
+        intensity_values = intensity.values[0]
+        mean_intensity = float(np.mean(intensity_values))
+        intensity_std = float(np.std(intensity_values))
+        
+        # Classify tone
+        if mean_pitch < 150:
+            tone = "Low"
+        elif mean_pitch < 250:
+            tone = "Medium"
+        else:
+            tone = "High"
+        
+        # Classify prosody style
+        if pitch_std < 20:
+            prosody_style = "Monotone"
+        elif pitch_std < 50:
+            prosody_style = "Moderate variation"
+        else:
+            prosody_style = "Expressive"
+        
+        return {
+            "mean_pitch_hz": mean_pitch,
+            "pitch_std": pitch_std,
+            "mean_intensity_db": mean_intensity,
+            "intensity_std": intensity_std,
+            "tone": tone,
+            "prosody_style": prosody_style
+        }
+        
+    except Exception as e:
+        logger.error(f"Prosody analysis failed: {e}")
+        raise
+
+
+def analyze_emotion(audio_path, transcription_text):
+    """
+    Analyze speech emotion using transformers emotion recognition model.
+    
+    Args:
+        audio_path: Path to audio file
+        transcription_text: Transcribed text
+        
+    Returns:
+        dict: Emotion analysis results
+        
+    Raises:
+        ImportError: If transformers is not available
+        FileNotFoundError: If audio file not found
+    """
+    if not EMOTION_AVAILABLE:
+        logger.error("Transformers is required for emotion analysis")
+        logger.error("Install with: pip install transformers torch")
+        raise ImportError("Transformers is required. Install with: pip install transformers torch")
+    
+    if not os.path.exists(audio_path):
+        logger.error(f"Audio file not found: {audio_path}")
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+    
+    try:
+        logger.debug(f"Analyzing emotion: {audio_path}")
+        
+        # Use text-based emotion recognition (simpler than audio-based)
+        classifier = hf_pipeline("text-classification", 
+                                 model="j-hartmann/emotion-english-distilroberta-base",
+                                 return_all_scores=True)
+        
+        # Analyze in chunks if text is long
+        if len(transcription_text) > 512:
+            chunks = [transcription_text[i:i+512] for i in range(0, len(transcription_text), 512)]
+        else:
+            chunks = [transcription_text]
+        
+        all_emotions = []
+        for chunk in chunks:
+            if chunk.strip():
+                results = classifier(chunk)
+                if results and len(results) > 0:
+                    all_emotions.extend(results[0])
+        
+        # Aggregate emotions
+        emotion_scores = {}
+        for item in all_emotions:
+            label = item['label']
+            score = item['score']
+            if label not in emotion_scores:
+                emotion_scores[label] = []
+            emotion_scores[label].append(score)
+        
+        # Calculate average scores
+        avg_emotions = {label: np.mean(scores) for label, scores in emotion_scores.items()}
+        
+        # Get dominant emotion
+        dominant_emotion = max(avg_emotions.items(), key=lambda x: x[1])[0] if avg_emotions else "Unknown"
+        
+        return {
+            "dominant_emotion": dominant_emotion,
+            "emotion_scores": avg_emotions
+        }
+        
+    except Exception as e:
+        logger.error(f"Emotion analysis failed: {e}")
+        raise
+
+
+def extract_full_asr_metrics(audio_path, language="en", model_size="small", 
+                            enable_prosody=False, enable_emotion=False):
     """
     Extract comprehensive ASR metrics from audio.
     
@@ -274,15 +467,18 @@ def extract_full_asr_metrics(audio_path, language="en", model_size="small"):
         audio_path: Path to audio file
         language: Language code
         model_size: Whisper model size
+        enable_prosody: Enable prosody analysis (requires Praat)
+        enable_emotion: Enable emotion analysis (requires transformers)
         
     Returns:
         dict: Complete ASR analysis
+        
+    Raises:
+        FileNotFoundError: If audio file not found
+        ImportError: If required dependencies missing
     """
     # Transcribe
     transcription = transcribe_audio(audio_path, language, model_size)
-    
-    if not transcription.get("available"):
-        return transcription
     
     # Analyze speech rate
     speech_rate = analyze_speech_rate(transcription, audio_path)
@@ -293,9 +489,7 @@ def extract_full_asr_metrics(audio_path, language="en", model_size="small"):
     # Analyze pauses
     pauses = analyze_speech_pauses(transcription)
     
-    # Combine results
-    return {
-        "available": True,
+    result = {
         "text": transcription.get("text", ""),
         "implementation": transcription.get("implementation", ""),
         "num_words": speech_rate.get("num_words", 0),
@@ -306,4 +500,26 @@ def extract_full_asr_metrics(audio_path, language="en", model_size="small"):
         "num_pauses": pauses.get("num_pauses", 0),
         "pause_style": pauses.get("style", "Unknown")
     }
-
+    
+    # Prosody analysis (optional)
+    if enable_prosody:
+        try:
+            prosody = analyze_prosody(audio_path)
+            result["prosody"] = prosody
+        except ImportError:
+            logger.warning("Prosody analysis skipped (Praat not available)")
+        except Exception as e:
+            logger.warning(f"Prosody analysis failed: {e}")
+    
+    # Emotion analysis (optional)
+    if enable_emotion:
+        try:
+            emotion = analyze_emotion(audio_path, transcription.get("text", ""))
+            result["emotion"] = emotion
+        except ImportError:
+            logger.warning("Emotion analysis skipped (transformers not available)")
+        except Exception as e:
+            logger.warning(f"Emotion analysis failed: {e}")
+    
+    logger.info(f"ASR metrics extracted successfully from {audio_path}")
+    return result

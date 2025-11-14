@@ -2,13 +2,17 @@
 # -*- coding: utf-8 -*-
 """
 Video Style Analysis Pipeline - Main Entry Point
-Simplified interface to run the complete analysis pipeline.
+
+Simplified interface to run the complete analysis pipeline for video style extraction.
+Analyzes camera language, color/lighting, editing rhythm, BGM, environment, and narration.
 """
 
-import os
-import sys
 from pathlib import Path
 from typing import List, Dict, Optional
+from collections import Counter
+
+import numpy as np
+from loguru import logger
 
 from utils import setup_logger, log_execution_time
 from metrics_visual import extract_visual_metrics
@@ -118,32 +122,43 @@ class VideoStylePipeline:
             logger.debug("Extracting audio metrics...")
             audio = extract_audio_metrics(str(audio_path))
         else:
-            logger.debug("Skipping audio analysis (no audio file)")
-            audio = {"available": False}
+            logger.warning(f"No audio file provided for {video_path.name}, skipping audio analysis")
+            raise ValueError(f"Audio file required but not provided for {video_path.name}")
         
         # ASR analysis
-        if enable_asr and audio_path and audio_path.exists():
+        if enable_asr:
+            if not audio_path or not audio_path.exists():
+                logger.error(f"Audio file required for ASR but not found: {audio_path}")
+                raise FileNotFoundError(f"Audio file required for ASR: {audio_path}")
             logger.debug("Running ASR transcription...")
-            asr = extract_full_asr_metrics(str(audio_path))
+            asr = extract_full_asr_metrics(str(audio_path), enable_prosody=True, enable_emotion=True)
         else:
-            asr = {"available": False}
+            logger.debug("ASR disabled")
+            asr = None
         
         # YOLO analysis
         if enable_yolo:
             logger.debug("Running YOLO object detection...")
             from metrics_visual import sample_frames
             frames, _, _, _ = sample_frames(str(video_path), target=36)
-            yolo = extract_full_yolo_metrics(frames)
+            yolo = extract_full_yolo_metrics(frames, enable_colors=True, enable_materials=True)
         else:
-            yolo = {"available": False}
+            logger.debug("YOLO disabled")
+            yolo = None
         
-        return {
+        result = {
             "path": str(video_path),
             "visual": visual,
-            "audio": audio,
-            "asr": asr,
-            "yolo": yolo
+            "audio": audio
         }
+        
+        if asr is not None:
+            result["asr"] = asr
+        
+        if yolo is not None:
+            result["yolo"] = yolo
+        
+        return result
     
     @log_execution_time
     def extract_consensus(self, video_metrics: List[Dict]) -> Dict:
@@ -151,14 +166,11 @@ class VideoStylePipeline:
         Extract cross-video consensus patterns.
         
         Args:
-            video_metrics: List of per-video metrics
+            video_metrics: List of per-video metrics dictionaries
             
         Returns:
-            dict: Consensus metrics
+            dict: Consensus metrics across all videos
         """
-        from collections import Counter
-        import numpy as np
-        
         logger.info("Extracting cross-video consensus...")
         
         def majority_value(values):
@@ -170,7 +182,7 @@ class VideoStylePipeline:
             return "Varied"
         
         def median_value(values):
-            """Calculate median of numeric values."""
+            """Calculate median of numeric values, filtering invalid entries."""
             valid = [v for v in values if isinstance(v, (int, float)) 
                     and not (np.isnan(v) or np.isinf(v))]
             return float(np.median(valid)) if valid else None
@@ -208,62 +220,102 @@ class VideoStylePipeline:
         tempos = []
         percussive_ratios = []
         speech_ratios = []
+        moods = []
+        instruments_list = []
         
         for v in video_metrics:
-            if v["audio"].get("available"):
-                bgm_styles.append(v["audio"]["bgm_style"])
-                tempos.append(v["audio"]["tempo_bpm"])
-                percussive_ratios.append(v["audio"]["percussive_ratio"])
-                speech_ratios.append(v["audio"]["speech_ratio"])
+            audio_data = v.get("audio", {})
+            bgm_styles.append(audio_data.get("bgm_style", "Unknown"))
+            tempos.append(audio_data.get("tempo_bpm"))
+            percussive_ratios.append(audio_data.get("percussive_ratio"))
+            speech_ratios.append(audio_data.get("speech_ratio"))
+            moods.append(audio_data.get("mood", "Unknown"))
+            
+            # Extract instruments
+            inst_data = audio_data.get("instruments", {})
+            if inst_data:
+                inst_list = inst_data.get("detected_instruments", [])
+                instruments_list.extend(inst_list)
         
         # Beat alignment
         beat_alignments = []
         for v in video_metrics:
-            if v["audio"].get("available") and v["audio"].get("beat_times"):
+            audio_data = v.get("audio", {})
+            if audio_data.get("beat_times"):
                 alignment = calculate_beat_alignment(
                     v["visual"]["duration"],
                     v["visual"]["cuts"],
-                    v["audio"]["beat_times"]
+                    audio_data["beat_times"]
                 )
-                if alignment is not None:
-                    beat_alignments.append(alignment)
+                beat_alignments.append(alignment)
         
         # YOLO consensus
-        yolo_available = any(v["yolo"].get("available") for v in video_metrics)
         yolo_environments = []
         yolo_styles = []
+        yolo_colors = {}
+        yolo_materials = {}
         
-        if yolo_available:
-            for v in video_metrics:
-                if v["yolo"].get("available"):
-                    env = v["yolo"].get("environment", {})
-                    yolo_environments.append(env.get("environment_type", "Unknown"))
-                    yolo_styles.append(env.get("cooking_style", "Unknown"))
+        for v in video_metrics:
+            yolo_data = v.get("yolo")
+            if yolo_data:
+                env = yolo_data.get("environment", {})
+                yolo_environments.append(env.get("environment_type", "Unknown"))
+                yolo_styles.append(env.get("cooking_style", "Unknown"))
+                
+                # Aggregate colors and materials
+                colors_data = yolo_data.get("colors", {}).get("dominant_colors", {})
+                for obj, color in colors_data.items():
+                    if obj not in yolo_colors:
+                        yolo_colors[obj] = []
+                    yolo_colors[obj].append(color)
+                
+                materials_data = yolo_data.get("materials", {}).get("dominant_materials", {})
+                for obj, material in materials_data.items():
+                    if obj not in yolo_materials:
+                        yolo_materials[obj] = []
+                    yolo_materials[obj].append(material)
+        
+        # Aggregate object colors and materials
+        consensus_colors = {}
+        consensus_materials = {}
+        for obj, colors in yolo_colors.items():
+            consensus_colors[obj] = majority_value(colors)
+        for obj, materials in yolo_materials.items():
+            consensus_materials[obj] = majority_value(materials)
         
         consensus = {
             "camera_angle": majority_value(camera_angles),
+            "focal_length_tendency": majority_value([v["visual"].get("focal_length_tendency", "Unknown") for v in video_metrics]),
+            "camera_motion": majority_value([v["visual"].get("camera_motion", {}).get("motion_type", "Unknown") for v in video_metrics]),
+            "composition_rule_of_thirds": majority_value([v["visual"].get("composition", {}).get("rule_of_thirds", "Unknown") for v in video_metrics]),
             "hue_family": majority_value(hue_families),
             "saturation": majority_value(saturations),
             "brightness": majority_value(brightnesses),
             "contrast": majority_value(contrasts),
             "cct": median_value(ccts),
+            "natural_light_ratio": median_value([v["visual"].get("lighting", {}).get("natural_light_ratio", 0) for v in video_metrics]),
+            "artificial_light_ratio": median_value([v["visual"].get("lighting", {}).get("artificial_light_ratio", 0) for v in video_metrics]),
             "cuts_per_minute": median_value(cuts_per_min),
             "avg_shot_length": median_value(avg_shot_lengths),
             "transition_type": majority_value(transition_types),
             "beat_alignment": median_value(beat_alignments),
-            "bgm_style": majority_value(bgm_styles) if bgm_styles else "N/A",
+            "bgm_style": majority_value(bgm_styles) if bgm_styles else "Unknown",
+            "bgm_mood": majority_value(moods) if moods else "Unknown",
+            "bgm_instruments": list(set(instruments_list)) if instruments_list else [],
             "tempo_bpm": median_value(tempos),
             "percussive_ratio": median_value(percussive_ratios),
             "speech_ratio": median_value(speech_ratios),
             "countertop_color": majority_value(countertop_colors),
             "countertop_texture": majority_value(countertop_textures),
-            "yolo_available": yolo_available,
-            "yolo_environment": majority_value(yolo_environments) if yolo_environments else "N/A",
-            "yolo_style": majority_value(yolo_styles) if yolo_styles else "N/A"
+            "yolo_environment": majority_value(yolo_environments) if yolo_environments else "Unknown",
+            "yolo_style": majority_value(yolo_styles) if yolo_styles else "Unknown",
+            "yolo_object_colors": consensus_colors,
+            "yolo_object_materials": consensus_materials
         }
         
+        cuts_per_min = consensus.get('cuts_per_minute', 0) or 0
         logger.debug(f"Consensus extracted: {consensus['camera_angle']} camera, "
-                    f"{consensus['cuts_per_minute']:.2f if consensus['cuts_per_minute'] else 0:.2f} cuts/min")
+                    f"{cuts_per_min:.2f} cuts/min")
         
         return consensus
     
@@ -327,13 +379,14 @@ class VideoStylePipeline:
         logger.info("Analysis Complete!")
         logger.info("=" * 70)
         logger.info(f"  Videos analyzed: {len(video_metrics)}")
-        logger.info(f"  Audio analyzed: {sum(1 for v in video_metrics if v['audio'].get('available'))}")
-        logger.info(f"  ASR enabled: {sum(1 for v in video_metrics if v['asr'].get('available'))}")
-        logger.info(f"  YOLO enabled: {sum(1 for v in video_metrics if v['yolo'].get('available'))}")
+        logger.info(f"  Audio analyzed: {len(video_metrics)}")
+        logger.info(f"  ASR enabled: {sum(1 for v in video_metrics if v.get('asr'))}")
+        logger.info(f"  YOLO enabled: {sum(1 for v in video_metrics if v.get('yolo'))}")
         logger.info("")
+        cuts_per_min = consensus.get('cuts_per_minute', 0) or 0
         logger.info(f"  Camera: {consensus['camera_angle']}")
         logger.info(f"  Color: {consensus['hue_family']}, {consensus['saturation']}, {consensus['brightness']}")
-        logger.info(f"  Editing: {consensus['cuts_per_minute']:.2f if consensus['cuts_per_minute'] else 0:.2f} cuts/min")
+        logger.info(f"  Editing: {cuts_per_min:.2f} cuts/min")
         logger.info(f"  BGM: {consensus['bgm_style']}")
         
         return {
@@ -343,6 +396,4 @@ class VideoStylePipeline:
         }
 
 
-# VideoStylePipeline class ends here
-# Main entry point is in project root: main.py
 

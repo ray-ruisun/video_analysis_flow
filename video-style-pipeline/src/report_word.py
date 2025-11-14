@@ -11,35 +11,7 @@ from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-
-def format_value(value, spec=None, na="N/A"):
-    """
-    Format a value for display, handling None, NaN, and inf.
-    
-    Args:
-        value: Value to format
-        spec: Format specification string (e.g., '.2f')
-        na: String to return if value is unavailable
-        
-    Returns:
-        str: Formatted value
-    """
-    if value is None:
-        return na
-    
-    try:
-        import numpy as np
-        if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
-            return na
-    except ImportError:
-        pass
-    
-    try:
-        if spec:
-            return f"{value:{spec}}"
-        return str(value)
-    except Exception:
-        return str(value)
+from utils import format_value
 
 
 def create_report_header(doc, title="Video Style Analysis Report"):

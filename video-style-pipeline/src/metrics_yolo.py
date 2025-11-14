@@ -2,18 +2,24 @@
 # -*- coding: utf-8 -*-
 """
 YOLO object detection module.
+
 Detects kitchen appliances, utensils, and common objects in cooking videos.
+Analyzes object colors, materials, and characteristics.
 """
 
 from collections import Counter
+from loguru import logger
 
-# Optional dependency handling
-YOLO_AVAILABLE = False
+# Required dependency
 try:
     from ultralytics import YOLO
-    YOLO_AVAILABLE = True
-except ImportError:
-    pass
+except ImportError as e:
+    logger.error(f"YOLOv8 (ultralytics) not installed: {e}")
+    logger.error("Install with: pip install ultralytics")
+    raise ImportError("ultralytics is required. Install with: pip install ultralytics")
+
+import cv2
+import numpy as np
 
 
 # Kitchen and cooking-related objects in COCO dataset
@@ -44,23 +50,19 @@ def detect_objects_in_frames(frames, model_name="yolov8n.pt",
         
     Returns:
         dict: Detection results with object counts and statistics
+        
+    Raises:
+        ValueError: If frames are invalid or detection fails
     """
-    if not YOLO_AVAILABLE:
-        return {
-            "available": False,
-            "error": "YOLOv8 not installed. Install with: pip install ultralytics"
-        }
-    
     if not frames:
-        return {
-            "available": False,
-            "error": "No frames provided"
-        }
+        logger.error("No frames provided for object detection")
+        raise ValueError("No frames provided for object detection")
     
     if target_objects is None:
         target_objects = KITCHEN_OBJECTS
     
     try:
+        logger.debug(f"Loading YOLO model: {model_name}")
         # Load YOLO model
         model = YOLO(model_name)
         
@@ -71,8 +73,9 @@ def detect_objects_in_frames(frames, model_name="yolov8n.pt",
         
         # Sample frames for efficiency
         sampled_frames = frames[::sample_rate]
+        logger.debug(f"Processing {len(sampled_frames)} frames for object detection")
         
-        for frame in sampled_frames:
+        for idx, frame in enumerate(sampled_frames):
             # Run detection
             results = model.predict(frame, verbose=False, conf=0.3)
             
@@ -112,6 +115,19 @@ def detect_objects_in_frames(frames, model_name="yolov8n.pt",
             for obj in objects_in_frame:
                 frame_appearances[obj] += 1
         
+        if not object_counts:
+            logger.warning("No kitchen objects detected in frames")
+            return {
+                "model": model_name,
+                "frames_processed": len(sampled_frames),
+                "total_detections": 0,
+                "unique_objects": 0,
+                "object_counts": {},
+                "frame_appearances": {},
+                "avg_confidence": {},
+                "top_objects": []
+            }
+        
         # Calculate average confidence per object
         avg_confidence = {
             obj: sum(scores) / len(scores)
@@ -121,8 +137,9 @@ def detect_objects_in_frames(frames, model_name="yolov8n.pt",
         # Get most common objects
         top_objects = object_counts.most_common(10)
         
+        logger.info(f"Detected {len(object_counts)} unique objects, {sum(object_counts.values())} total detections")
+        
         return {
-            "available": True,
             "model": model_name,
             "frames_processed": len(sampled_frames),
             "total_detections": sum(object_counts.values()),
@@ -134,10 +151,8 @@ def detect_objects_in_frames(frames, model_name="yolov8n.pt",
         }
         
     except Exception as e:
-        return {
-            "available": False,
-            "error": str(e)
-        }
+        logger.error(f"Object detection failed: {e}")
+        raise
 
 
 def classify_kitchen_environment(detection_results):
@@ -149,9 +164,13 @@ def classify_kitchen_environment(detection_results):
         
     Returns:
         dict: Kitchen environment classification
+        
+    Raises:
+        ValueError: If detection results are invalid
     """
-    if not detection_results.get("available"):
-        return {"available": False}
+    if not detection_results:
+        logger.error("Invalid detection results")
+        raise ValueError("Invalid detection results")
     
     object_counts = detection_results.get("object_counts", {})
     
@@ -190,15 +209,15 @@ def classify_kitchen_environment(detection_results):
         style = "General cooking"
     
     # Estimate production value
-    if detection_results.get("unique_objects", 0) > 8:
+    unique_objects = detection_results.get("unique_objects", 0)
+    if unique_objects > 8:
         production = "High (diverse props)"
-    elif detection_results.get("unique_objects", 0) > 4:
+    elif unique_objects > 4:
         production = "Medium"
     else:
         production = "Minimal/focused"
     
     return {
-        "available": True,
         "environment_type": env_type,
         "cooking_style": style,
         "production_value": production,
@@ -210,7 +229,7 @@ def classify_kitchen_environment(detection_results):
 
 def analyze_object_colors(frames, detection_results, color_samples=5):
     """
-    Analyze colors of detected objects (simplified approach).
+    Analyze colors of detected objects.
     
     Args:
         frames: Video frames
@@ -219,14 +238,19 @@ def analyze_object_colors(frames, detection_results, color_samples=5):
         
     Returns:
         dict: Color analysis of detected objects
+        
+    Raises:
+        ValueError: If inputs are invalid
     """
-    if not detection_results.get("available") or not YOLO_AVAILABLE:
-        return {"available": False}
+    if not frames:
+        logger.error("No frames provided for color analysis")
+        raise ValueError("No frames provided for color analysis")
+    
+    if not detection_results or not detection_results.get("object_counts"):
+        logger.error("Invalid detection results for color analysis")
+        raise ValueError("Invalid detection results for color analysis")
     
     try:
-        import cv2
-        import numpy as np
-        
         model = YOLO(detection_results.get("model", "yolov8n.pt"))
         
         # Sample frames
@@ -286,16 +310,132 @@ def analyze_object_colors(frames, detection_results, color_samples=5):
             counter = Counter(colors)
             dominant_colors[obj] = counter.most_common(1)[0][0] if counter else "Unknown"
         
+        logger.debug(f"Color analysis completed for {len(dominant_colors)} objects")
+        
         return {
-            "available": True,
             "dominant_colors": dominant_colors
         }
         
     except Exception as e:
+        logger.error(f"Object color analysis failed: {e}")
+        raise
+
+
+def classify_material(roi):
+    """
+    Classify material type based on texture analysis (heuristic method).
+    
+    Args:
+        roi: Region of interest (BGR image)
+        
+    Returns:
+        str: Material type
+    """
+    if roi is None or roi.size == 0:
+        return "Unknown"
+    
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    
+    # Texture analysis via edge density and variance
+    edges = cv2.Canny(gray, 100, 200)
+    edge_density = float(np.count_nonzero(edges)) / (edges.size + 1e-6)
+    variance = float(np.var(gray))
+    
+    # Material classification heuristics
+    if edge_density < 0.02 and variance < 500:
+        return "Smooth/Plastic"
+    elif edge_density < 0.05 and variance < 1000:
+        return "Metal"
+    elif edge_density < 0.08:
+        return "Wood"
+    elif edge_density < 0.12:
+        return "Ceramic/Stone"
+    else:
+        return "Textured/Other"
+
+
+def analyze_object_materials(frames, detection_results, material_samples=5):
+    """
+    Analyze materials of detected objects.
+    
+    Args:
+        frames: Video frames
+        detection_results: YOLO detection results
+        material_samples: Number of frames to sample
+        
+    Returns:
+        dict: Material analysis of detected objects
+        
+    Raises:
+        ValueError: If inputs are invalid
+    """
+    if not frames:
+        logger.error("No frames provided for material analysis")
+        raise ValueError("No frames provided for material analysis")
+    
+    if not detection_results or not detection_results.get("object_counts"):
+        logger.error("Invalid detection results for material analysis")
+        raise ValueError("Invalid detection results for material analysis")
+    
+    try:
+        model = YOLO(detection_results.get("model", "yolov8n.pt"))
+        
+        # Sample frames
+        sampled_frames = frames[::max(1, len(frames) // material_samples)][:material_samples]
+        
+        object_materials = {}
+        
+        for frame in sampled_frames:
+            results = model.predict(frame, verbose=False, conf=0.4)
+            
+            if not results:
+                continue
+            
+            result = results[0]
+            
+            if not hasattr(result, "boxes") or result.boxes is None:
+                continue
+            
+            for box in result.boxes:
+                cls_id = int(box.cls[0].item()) if hasattr(box.cls[0], 'item') else int(box.cls[0])
+                obj_name = result.names.get(cls_id, str(cls_id))
+                
+                if obj_name not in KITCHEN_OBJECTS:
+                    continue
+                
+                # Get bounding box
+                xyxy = box.xyxy[0].cpu().numpy()
+                x1, y1, x2, y2 = map(int, xyxy)
+                
+                # Extract ROI
+                roi = frame[y1:y2, x1:x2]
+                
+                if roi.size == 0:
+                    continue
+                
+                # Classify material
+                material = classify_material(roi)
+                
+                # Store
+                if obj_name not in object_materials:
+                    object_materials[obj_name] = []
+                object_materials[obj_name].append(material)
+        
+        # Aggregate materials per object
+        dominant_materials = {}
+        for obj, materials in object_materials.items():
+            counter = Counter(materials)
+            dominant_materials[obj] = counter.most_common(1)[0][0] if counter else "Unknown"
+        
+        logger.debug(f"Material analysis completed for {len(dominant_materials)} objects")
+        
         return {
-            "available": False,
-            "error": str(e)
+            "dominant_materials": dominant_materials
         }
+        
+    except Exception as e:
+        logger.error(f"Object material analysis failed: {e}")
+        raise
 
 
 def hue_to_color_name(hue):
@@ -320,33 +460,64 @@ def hue_to_color_name(hue):
         return "Purple/Magenta"
 
 
-def extract_full_yolo_metrics(frames, model_name="yolov8n.pt"):
+def extract_full_yolo_metrics(frames, model_name="yolov8n.pt", 
+                              enable_colors=True, enable_materials=True):
     """
     Extract comprehensive YOLO-based metrics.
     
     Args:
         frames: List of video frames
         model_name: YOLOv8 model name
+        enable_colors: Enable color analysis
+        enable_materials: Enable material analysis
         
     Returns:
         dict: Complete object detection analysis
+        
+    Raises:
+        ValueError: If frames are invalid or processing fails
     """
+    if not frames:
+        logger.error("No frames provided for YOLO analysis")
+        raise ValueError("No frames provided for YOLO analysis")
+    
     # Detect objects
     detection_results = detect_objects_in_frames(frames, model_name)
     
-    if not detection_results.get("available"):
-        return detection_results
+    if detection_results.get("total_detections", 0) == 0:
+        logger.warning("No objects detected")
+        return {
+            "detection": detection_results,
+            "environment": classify_kitchen_environment(detection_results),
+            "colors": {"dominant_colors": {}} if enable_colors else None,
+            "materials": {"dominant_materials": {}} if enable_materials else None
+        }
     
     # Classify environment
     environment = classify_kitchen_environment(detection_results)
     
-    # Analyze colors (optional, can be slow)
-    # colors = analyze_object_colors(frames, detection_results)
-    
-    return {
-        "available": True,
+    result = {
         "detection": detection_results,
-        "environment": environment,
-        # "colors": colors
+        "environment": environment
     }
-
+    
+    # Analyze colors
+    if enable_colors:
+        try:
+            colors = analyze_object_colors(frames, detection_results)
+            result["colors"] = colors
+        except Exception as e:
+            logger.error(f"Color analysis failed: {e}")
+            raise
+    
+    # Analyze materials
+    if enable_materials:
+        try:
+            materials = analyze_object_materials(frames, detection_results)
+            result["materials"] = materials
+        except Exception as e:
+            logger.error(f"Material analysis failed: {e}")
+            raise
+    
+    logger.info("YOLO metrics extracted successfully")
+    return result
