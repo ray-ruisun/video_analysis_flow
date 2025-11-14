@@ -86,7 +86,45 @@ Examples / 示例:
         help="Working directory / 工作目录 (default: work)"
     )
     
+    parser.add_argument(
+        "--modules",
+        help="Comma-separated module list (visual,audio,asr,yolo). Default honors --yolo/--asr flags. / 模块列表"
+    )
+    
     return parser.parse_args()
+
+
+def resolve_modules(args):
+    """Resolve requested modules from CLI flags."""
+    if args.modules:
+        tokens = [token.strip().lower() for token in args.modules.split(",")]
+        modules = []
+        seen = set()
+        for token in tokens:
+            if not token:
+                continue
+            if token not in ("visual", "audio", "asr", "yolo"):
+                raise ValueError(f"Invalid module '{token}'. Valid options: visual,audio,asr,yolo")
+            if token not in seen:
+                modules.append(token)
+                seen.add(token)
+        if not modules:
+            raise ValueError("No valid modules specified after parsing --modules.")
+        return modules
+    
+    modules = ["visual", "audio"]
+    if args.asr:
+        modules.append("asr")
+    if args.yolo:
+        modules.append("yolo")
+    # Preserve order but deduplicate
+    resolved = []
+    seen = set()
+    for module in modules:
+        if module not in seen:
+            resolved.append(module)
+            seen.add(module)
+    return resolved
 
 
 def main():
@@ -97,17 +135,21 @@ def main():
         logger.info("Starting Video Style Analysis Pipeline")
         logger.info(f"Videos: {args.videos}")
         
+        modules = resolve_modules(args)
+        logger.info(f"Modules requested: {modules}")
+        if args.modules and (args.asr or args.yolo):
+            logger.warning("--modules specified; --asr/--yolo flags are ignored.")
+        
         # Create pipeline
         pipeline = VideoStylePipeline(
             video_paths=args.videos,
             audio_paths=args.audios,
-            work_dir=args.work_dir
+            work_dir=args.work_dir,
+            modules=modules
         )
         
         # Run analysis
         results = pipeline.run(
-            enable_yolo=args.yolo,
-            enable_asr=args.asr,
             frame_mode=args.frames,
             output_report=args.output
         )

@@ -15,18 +15,28 @@ from loguru import logger
 try:
     import librosa
     import soundfile as sf
+    import essentia.standard as es
 except ImportError as e:
     logger.error(f"Required audio libraries not installed: {e}")
-    logger.error("Install with: pip install librosa soundfile")
-    raise ImportError("librosa and soundfile are required. Install with: pip install librosa soundfile")
+    logger.error("Install with: pip install librosa soundfile essentia-tensorflow")
+    raise ImportError("librosa, soundfile, and essentia-tensorflow are required. Install with: pip install librosa soundfile essentia-tensorflow")
 
-# Optional: Essentia for advanced music analysis
-try:
-    import essentia.standard as es
-    ESSENTIA_AVAILABLE = True
-except ImportError:
-    ESSENTIA_AVAILABLE = False
-    logger.warning("Essentia not available. Install for advanced music analysis: pip install essentia-tensorflow")
+MUSIC_EXTRACTOR = es.MusicExtractor(
+    lowlevelStats=['mean', 'stdev'],
+    rhythmStats=['mean', 'stdev'],
+    tonalStats=['mean', 'stdev'],
+    highlevelStats=['mean']
+)
+
+MOOD_TAGS = [
+    "mood_happy",
+    "mood_sad",
+    "mood_aggressive",
+    "mood_relaxed",
+    "mood_party",
+    "mood_acoustic",
+    "mood_electronic"
+]
 
 
 def extract_audio_metrics(audio_path):
@@ -89,12 +99,6 @@ def extract_audio_metrics(audio_path):
         # Speech presence proxy (combination of flatness and ZCR)
         speech_ratio = float(np.clip(mean_flatness * 1.8 + mean_zcr * 0.8, 0, 1))
         
-        # BGM style classification (heuristic)
-        if percussive_ratio < 0.45 and mean_centroid < 2200:
-            bgm_style = "Acoustic/lofi"
-        else:
-            bgm_style = "Electronic/beat-driven"
-        
         # RMS energy over time
         rms = librosa.feature.rms(y=y)[0]
         mean_energy = float(np.mean(rms))
@@ -104,11 +108,15 @@ def extract_audio_metrics(audio_path):
         rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.85)
         mean_rolloff = float(np.mean(rolloff))
         
-        # Mood classification
-        mood = classify_bgm_mood(tempo, percussive_ratio, mean_centroid, energy_variance)
+        # Essentia high-level descriptors
+        essentia_features = extract_essentia_features(audio_path)
+        genre = str(essentia_features['highlevel.genre_dortmund.value'])
+        mood_summary, mood_tags = summarize_mood_from_essentia(essentia_features)
+        instruments = detect_instruments(essentia_features)
         
-        # Instrument detection (using Essentia if available, else heuristic)
-        instruments = detect_instruments(y, sr)
+        tonal_key = None
+        if 'tonal.key_key' in essentia_features and 'tonal.key_scale' in essentia_features:
+            tonal_key = f"{str(essentia_features['tonal.key_key']).capitalize()} {str(essentia_features['tonal.key_scale']).capitalize()}"
         
         result = {
             "tempo_bpm": float(tempo),
@@ -119,12 +127,14 @@ def extract_audio_metrics(audio_path):
             "spectral_flatness": mean_flatness,
             "zero_crossing_rate": mean_zcr,
             "speech_ratio": speech_ratio,
-            "bgm_style": bgm_style,
-            "mood": mood,
+            "bgm_style": genre,
+            "mood": mood_summary,
+            "mood_tags": mood_tags,
             "instruments": instruments,
             "mean_energy": mean_energy,
             "energy_variance": energy_variance,
-            "spectral_rolloff": mean_rolloff
+            "spectral_rolloff": mean_rolloff,
+            "key_signature": tonal_key
         }
         
         logger.info(f"Audio metrics extracted successfully from {audio_path}")
@@ -135,85 +145,58 @@ def extract_audio_metrics(audio_path):
         raise
 
 
-def detect_instruments(y, sr):
+def extract_essentia_features(audio_path):
+    """Run Essentia MusicExtractor on the audio file."""
+    try:
+        features, _ = MUSIC_EXTRACTOR(audio_path)
+        return features
+    except Exception as e:
+        logger.error(f"Essentia MusicExtractor failed: {e}")
+        raise
+
+
+def summarize_mood_from_essentia(essentia_features):
+    """Summarize mood predictions from Essentia high-level descriptors."""
+    mood_entries = []
+    for tag in MOOD_TAGS:
+        value_key = f"highlevel.{tag}.value"
+        prob_key = f"highlevel.{tag}.probability"
+        if value_key in essentia_features and prob_key in essentia_features:
+            label = str(essentia_features[value_key])
+            probability = float(essentia_features[prob_key])
+            mood_entries.append({"label": label, "probability": probability})
+    
+    if not mood_entries:
+        logger.error("Essentia mood descriptors missing")
+        raise ValueError("Essentia mood descriptors missing")
+    
+    top_entry = max(mood_entries, key=lambda item: item["probability"])
+    summary = f"{top_entry['label']} ({top_entry['probability']:.2f})"
+    return summary, mood_entries
+
+
+def detect_instruments(essentia_features):
     """
-    Detect instruments in audio using Essentia (if available) or heuristic methods.
-    
-    Args:
-        y: Audio signal
-        sr: Sample rate
-        
-    Returns:
-        dict: Instrument detection results
+    Detect instrumentation characteristics from Essentia high-level descriptors.
     """
-    if ESSENTIA_AVAILABLE:
-        try:
-            logger.debug("Using Essentia for instrument detection")
-            # Use Essentia Music Extractor
-            extractor = es.MusicExtractor()
-            features, _ = extractor(y)
-            
-            # Extract instrument-related features
-            instruments_detected = []
-            
-            # Check for common instruments based on spectral features
-            if features.get('lowlevel.mfcc.mean', None) is not None:
-                mfcc = features['lowlevel.mfcc.mean']
-                # Heuristic: different MFCC patterns indicate different instruments
-                if len(mfcc) > 0:
-                    # Piano: typically has strong low MFCCs
-                    if mfcc[0] > 0.5:
-                        instruments_detected.append("Piano")
-                    # Guitar: mid-range MFCCs
-                    if len(mfcc) > 5 and abs(mfcc[3]) > 0.3:
-                        instruments_detected.append("Guitar")
-            
-            # Percussion detection
-            if features.get('rhythm.beats_loudness.mean', None) is not None:
-                if features['rhythm.beats_loudness.mean'] > 0.1:
-                    instruments_detected.append("Drums/Percussion")
-            
-            if not instruments_detected:
-                instruments_detected = ["Unknown"]
-            
-            return {
-                "detected_instruments": instruments_detected,
-                "method": "Essentia"
-            }
-        except Exception as e:
-            logger.warning(f"Essentia instrument detection failed: {e}, falling back to heuristic")
+    instrumentation = []
     
-    # Heuristic fallback
-    logger.debug("Using heuristic method for instrument detection")
-    instruments_detected = []
-    
-    # Analyze spectral characteristics
-    spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-    mean_centroid = np.mean(spectral_centroid)
-    
-    # Chroma features for harmonic content
-    chroma = librosa.feature.chroma(y=y, sr=sr)
-    chroma_mean = np.mean(chroma, axis=1)
-    
-    # Percussion detection
-    percussive_ratio = np.sum(np.abs(librosa.effects.hpss(y)[1])) / (np.sum(np.abs(y)) + 1e-6)
-    if percussive_ratio > 0.4:
-        instruments_detected.append("Drums/Percussion")
-    
-    # Harmonic instruments
-    if mean_centroid < 2000:
-        instruments_detected.append("Bass")
-    elif mean_centroid < 3000:
-        instruments_detected.append("Guitar/Piano")
+    voice_value = str(essentia_features['highlevel.voice_instrumental.value'])
+    if voice_value == "instrumental":
+        instrumentation.append("Instrumental focus")
     else:
-        instruments_detected.append("High-frequency instruments")
+        instrumentation.append("Vocal focus")
     
-    if not instruments_detected:
-        instruments_detected = ["Unknown"]
+    if str(essentia_features['highlevel.mood_acoustic.value']) == "acoustic":
+        instrumentation.append("Acoustic timbre")
+    if str(essentia_features['highlevel.mood_electronic.value']) == "electronic":
+        instrumentation.append("Electronic elements")
+    
+    instrumentation = list(dict.fromkeys(instrumentation))  # deduplicate while preserving order
     
     return {
-        "detected_instruments": instruments_detected,
-        "method": "Heuristic"
+        "detected_instruments": instrumentation,
+        "method": "Essentia MusicExtractor"
     }
 
 

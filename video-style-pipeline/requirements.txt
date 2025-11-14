@@ -1,44 +1,39 @@
-# Core dependencies - REQUIRED
-numpy>=1.21.0
-opencv-python>=4.5.0
+# Core dependencies
+numpy>=1.23.0
+opencv-python>=4.7.0
 pillow>=9.0.0
 python-docx>=0.8.11
+requests>=2.31.0
 
-# Logging and utilities - REQUIRED
+# Logging & utilities
 loguru>=0.7.0
 tqdm>=4.65.0
 pyyaml>=6.0
 colorama>=0.4.6
 
-# Audio analysis - REQUIRED
-librosa>=0.9.0
-soundfile>=0.11.0
+# Vision models
+scenedetect[opencv]>=0.6.0
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+timm>=0.9.0
 
-# Object detection - REQUIRED
+# Object detection
 ultralytics>=8.0.0
 
-# ASR (Speech Recognition) - REQUIRED (at least one)
-# Option 1: faster-whisper (recommended for speed)
+# Audio analysis
+librosa>=0.9.0
+soundfile>=0.11.0
+essentia-tensorflow>=2.1b6
+
+# Speech & NLP
 faster-whisper>=0.9.0
-# Option 2: OpenAI Whisper (alternative)
+parselmouth>=0.4.0
+speechbrain>=0.5.14
+transformers>=4.35.0
+
+# Optional (uncomment if needed)
 # openai-whisper>=20231117
-
-# Optional: Advanced music analysis (for better instrument detection)
-# essentia-tensorflow>=2.1b6
-
-# Optional: Prosody analysis (for speech tone analysis)
-# parselmouth>=0.4.0
-
-# Optional: Emotion recognition (for speech emotion analysis)
-# transformers>=4.20.0
-# torch>=1.13.0
-
-# Optional: Advanced scene detection
-# scenedetect[opencv]>=0.6.0
-
-# Optional: Source separation
 # spleeter>=2.3.0
 # demucs>=4.0.0
 
-# Optional: Advanced white balance
-# opencv-contrib-python>=4.5.0

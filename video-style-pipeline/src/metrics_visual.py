@@ -16,10 +16,13 @@ import numpy as np
 import cv2
 from PIL import Image
 from loguru import logger
+from scenedetect import open_video, SceneManager
+from scenedetect.detectors import ContentDetector
+
+from scene_classifier import classify_scene_categories
 
 
 # Constants
-H_BINS, S_BINS = 30, 30
 MAX_WIDTH = 640
 
 
@@ -566,66 +569,42 @@ def contrast_description(v_std):
         return "High contrast"
 
 
-def detect_shot_cuts(frames):
+def detect_shot_cuts(video_path):
     """
-    Detect shot boundaries using histogram comparison.
+    Detect shot boundaries using PySceneDetect's ContentDetector.
     
     Args:
-        frames: List of BGR frames (numpy arrays)
+        video_path: Path to video file
         
     Returns:
-        tuple: (num_cuts, cut_indices, transition_type)
+        tuple: (num_cuts, cut_timestamps, avg_shot_length, transition_type)
     """
-    if not frames:
-        logger.error("No frames provided for shot cut detection")
-        raise ValueError("No frames provided for shot cut detection")
+    video_path = Path(video_path)
+    if not video_path.exists():
+        logger.error(f"Video file not found for shot detection: {video_path}")
+        raise FileNotFoundError(f"Video file not found for shot detection: {video_path}")
     
-    prev_hist = None
-    bhattacharyya_dists = []
+    video = open_video(str(video_path))
+    scene_manager = SceneManager()
+    scene_manager.add_detector(ContentDetector(threshold=27.0))
+    scene_manager.detect_scenes(video)
+    scene_list = scene_manager.get_scene_list()
     
-    for frame in frames:
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        hist = cv2.calcHist([hsv], [0, 1], None, [H_BINS, S_BINS], [0, 180, 0, 256])
-        hist = cv2.normalize(hist, None).astype(np.float32)
-        
-        if prev_hist is not None:
-            dist = float(cv2.compareHist(prev_hist, hist, cv2.HISTCMP_BHATTACHARYYA))
-            bhattacharyya_dists.append(dist)
-        
-        prev_hist = hist
+    if not scene_list:
+        logger.error("PySceneDetect failed to detect any scenes")
+        raise ValueError("PySceneDetect failed to detect any scenes")
     
-    if not bhattacharyya_dists:
-        logger.warning("No shot cuts detected")
-        return 0, [], "Unknown"
+    cut_timestamps = [scene_list[idx][0].get_seconds() for idx in range(1, len(scene_list))]
+    scene_durations = [
+        max(1e-6, scene[1].get_seconds() - scene[0].get_seconds())
+        for scene in scene_list
+    ]
     
-    # Adaptive threshold
-    mu = float(np.mean(bhattacharyya_dists))
-    sd = float(np.std(bhattacharyya_dists))
-    threshold = mu + sd
+    avg_shot_length = float(np.mean(scene_durations)) if scene_durations else 0.0
+    transition_type = "PySceneDetect ContentDetector"
     
-    arr = np.array(bhattacharyya_dists)
-    cut_indices = np.where(arr > threshold)[0].tolist()
-    
-    # Classify transition type based on cut clustering
-    runs = []
-    i = 0
-    while i < len(arr):
-        if arr[i] > threshold:
-            j = i
-            while j + 1 < len(arr) and arr[j + 1] > threshold * 0.95:
-                j += 1
-            runs.append(j - i + 1)
-            i = j + 1
-        else:
-            i += 1
-    
-    if runs and np.median(runs) >= 3:
-        transition_type = "Gradual/dissolve-like"
-    else:
-        transition_type = "Hard cuts"
-    
-    logger.debug(f"Detected {len(cut_indices)} cuts, transition type: {transition_type}")
-    return len(cut_indices), cut_indices, transition_type
+    logger.debug(f"Detected {len(cut_timestamps)} cuts via PySceneDetect")
+    return len(cut_timestamps), cut_timestamps, avg_shot_length, transition_type
 
 
 def create_contact_sheet(frames, mode, output_path, cols=4, pad=6):
@@ -747,8 +726,17 @@ def extract_visual_metrics(video_path, output_dir, frame_mode="edge"):
         # Camera motion
         camera_motion = detect_camera_motion(frames, fps)
         
-        # Shot cut detection
-        num_cuts, cut_indices, trans_type = detect_shot_cuts(frames)
+        # Scene classification (Places365)
+        scene_categories = classify_scene_categories(frames, topk=3)
+        
+        # Shot cut detection via PySceneDetect
+        num_cuts, cut_timestamps, avg_shot_length, trans_type = detect_shot_cuts(video_path)
+        cut_frame_indices = []
+        if duration > 0:
+            for timestamp in cut_timestamps:
+                idx = int((timestamp / duration) * len(frames))
+                idx = max(0, min(len(frames) - 1, idx))
+                cut_frame_indices.append(idx)
         
         # Aggregate lighting analysis
         avg_natural_ratio = np.mean([l["natural_light_ratio"] for l in lighting_analyses])
@@ -764,7 +752,7 @@ def extract_visual_metrics(video_path, output_dir, frame_mode="edge"):
             0,
             len(frames) // 2,
             len(frames) - 1
-        ] + [max(0, k - 1) for k in cut_indices] + [min(len(frames) - 1, k + 1) for k in cut_indices]))
+        ] + [max(0, k - 1) for k in cut_frame_indices] + [min(len(frames) - 1, k + 1) for k in cut_frame_indices]))
         
         key_frames = [frames[i] for i in key_frame_indices if i < len(frames)]
         
@@ -788,7 +776,10 @@ def extract_visual_metrics(video_path, output_dir, frame_mode="edge"):
                 "rule_of_thirds": avg_rule_of_thirds,
                 "balance": avg_balance
             },
+            "scene_categories": scene_categories,
             "cuts": int(num_cuts),
+            "cut_timestamps": [float(ts) for ts in cut_timestamps],
+            "avg_shot_length": float(avg_shot_length),
             "transition_type": trans_type,
             "countertop_color": Counter(ct_colors).most_common(1)[0][0] if ct_colors else "Unknown",
             "countertop_texture": Counter(ct_textures).most_common(1)[0][0] if ct_textures else "Unknown",
