@@ -1,0 +1,475 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+流水线步骤基础类和数据结构定义
+
+设计原则:
+- 每个步骤有明确的输入类型和输出类型
+- 步骤之间通过数据类传递结果，确保类型安全
+- 使用 dataclass 确保数据结构清晰可追溯
+"""
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional, TypeVar, Generic
+from loguru import logger
+
+
+# ============================================================================
+# 基础输入/输出类型
+# ============================================================================
+
+@dataclass
+class StepInput:
+    """步骤输入基类"""
+    pass
+
+
+@dataclass
+class StepOutput:
+    """步骤输出基类"""
+    success: bool = True
+    error_message: Optional[str] = None
+
+
+# ============================================================================
+# 视频/音频输入定义
+# ============================================================================
+
+@dataclass
+class VideoInput(StepInput):
+    """
+    视频输入配置
+    
+    Attributes:
+        video_path: 视频文件路径
+        audio_path: 可选的音频文件路径（用于音频分析）
+        work_dir: 工作目录，用于存放中间文件
+        frame_mode: 截图模式 ("edge", "mosaic", "off")
+    """
+    video_path: Path
+    audio_path: Optional[Path] = None
+    work_dir: Path = field(default_factory=lambda: Path("work"))
+    frame_mode: str = "edge"
+    
+    def __post_init__(self):
+        """验证并转换路径类型"""
+        if isinstance(self.video_path, str):
+            self.video_path = Path(self.video_path)
+        if isinstance(self.audio_path, str):
+            self.audio_path = Path(self.audio_path)
+        if isinstance(self.work_dir, str):
+            self.work_dir = Path(self.work_dir)
+    
+    def validate(self) -> None:
+        """验证输入有效性"""
+        if not self.video_path.exists():
+            raise FileNotFoundError(f"视频文件不存在: {self.video_path}")
+
+
+# ============================================================================
+# 各步骤输出定义
+# ============================================================================
+
+@dataclass
+class VisualOutput(StepOutput):
+    """
+    视觉分析输出
+    
+    包含: 色彩分析、镜头角度、构图、场景分类、剪辑节奏等
+    """
+    # 基础信息
+    fps: float = 0.0
+    total_frames: int = 0
+    duration: float = 0.0
+    
+    # 色彩分析
+    hue_family: str = "Unknown"
+    saturation_band: str = "Unknown"
+    brightness_band: str = "Unknown"
+    contrast: str = "Unknown"
+    cct_mean: Optional[float] = None
+    
+    # 镜头分析
+    camera_angle: str = "Unknown"
+    focal_length_tendency: str = "Unknown"
+    camera_motion: Dict[str, Any] = field(default_factory=dict)
+    
+    # 构图分析
+    composition: Dict[str, Any] = field(default_factory=dict)
+    
+    # 场景分类
+    scene_categories: List[Dict[str, Any]] = field(default_factory=list)
+    
+    # 剪辑分析
+    cuts: int = 0
+    cut_timestamps: List[float] = field(default_factory=list)
+    avg_shot_length: float = 0.0
+    transition_type: str = "Unknown"
+    
+    # 台面分析
+    countertop_color: str = "Unknown"
+    countertop_texture: str = "Unknown"
+    
+    # 光线分析
+    lighting: Dict[str, Any] = field(default_factory=dict)
+    
+    # 截图路径
+    contact_sheet: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式（兼容旧版接口）"""
+        return {
+            "fps": self.fps,
+            "total_frames": self.total_frames,
+            "duration": self.duration,
+            "hue_family": self.hue_family,
+            "saturation_band": self.saturation_band,
+            "brightness_band": self.brightness_band,
+            "contrast": self.contrast,
+            "cct_mean": self.cct_mean,
+            "camera_angle": self.camera_angle,
+            "focal_length_tendency": self.focal_length_tendency,
+            "camera_motion": self.camera_motion,
+            "composition": self.composition,
+            "scene_categories": self.scene_categories,
+            "cuts": self.cuts,
+            "cut_timestamps": self.cut_timestamps,
+            "avg_shot_length": self.avg_shot_length,
+            "transition_type": self.transition_type,
+            "countertop_color": self.countertop_color,
+            "countertop_texture": self.countertop_texture,
+            "lighting": self.lighting,
+            "contact_sheet": self.contact_sheet,
+        }
+
+
+@dataclass
+class AudioOutput(StepOutput):
+    """
+    音频分析输出
+    
+    包含: 节拍、BPM、BGM风格、乐器检测、情绪分析等
+    """
+    tempo_bpm: float = 0.0
+    beat_times: List[float] = field(default_factory=list)
+    num_beats: int = 0
+    percussive_ratio: float = 0.0
+    
+    # 频谱特征
+    spectral_centroid: float = 0.0
+    spectral_flatness: float = 0.0
+    zero_crossing_rate: float = 0.0
+    
+    # 能量特征
+    mean_energy: float = 0.0
+    energy_variance: float = 0.0
+    spectral_rolloff: float = 0.0
+    
+    # 高级分析
+    speech_ratio: float = 0.0
+    bgm_style: str = "Unknown"
+    mood: str = "Unknown"
+    mood_tags: List[Dict[str, Any]] = field(default_factory=list)
+    instruments: Dict[str, Any] = field(default_factory=dict)
+    key_signature: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "tempo_bpm": self.tempo_bpm,
+            "beat_times": self.beat_times,
+            "num_beats": self.num_beats,
+            "percussive_ratio": self.percussive_ratio,
+            "spectral_centroid": self.spectral_centroid,
+            "spectral_flatness": self.spectral_flatness,
+            "zero_crossing_rate": self.zero_crossing_rate,
+            "mean_energy": self.mean_energy,
+            "energy_variance": self.energy_variance,
+            "spectral_rolloff": self.spectral_rolloff,
+            "speech_ratio": self.speech_ratio,
+            "bgm_style": self.bgm_style,
+            "mood": self.mood,
+            "mood_tags": self.mood_tags,
+            "instruments": self.instruments,
+            "key_signature": self.key_signature,
+        }
+
+
+@dataclass
+class ASROutput(StepOutput):
+    """
+    语音识别分析输出
+    
+    包含: 转录文本、语速、口头禅、停顿分析、韵律、情感等
+    """
+    text: str = ""
+    implementation: str = ""
+    
+    # 语速分析
+    num_words: int = 0
+    words_per_second: float = 0.0
+    words_per_minute: float = 0.0
+    pace: str = "Unknown"
+    
+    # 口头禅
+    catchphrases: List[str] = field(default_factory=list)
+    
+    # 停顿分析
+    num_pauses: int = 0
+    pause_style: str = "Unknown"
+    
+    # 韵律分析（可选）
+    prosody: Optional[Dict[str, Any]] = None
+    
+    # 情感分析（可选）
+    emotion: Optional[Dict[str, Any]] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        result = {
+            "text": self.text,
+            "implementation": self.implementation,
+            "num_words": self.num_words,
+            "words_per_second": self.words_per_second,
+            "words_per_minute": self.words_per_minute,
+            "pace": self.pace,
+            "catchphrases": self.catchphrases,
+            "num_pauses": self.num_pauses,
+            "pause_style": self.pause_style,
+        }
+        if self.prosody:
+            result["prosody"] = self.prosody
+        if self.emotion:
+            result["emotion"] = self.emotion
+        return result
+
+
+@dataclass
+class YOLOOutput(StepOutput):
+    """
+    YOLO 目标检测输出
+    
+    包含: 检测结果、环境分类、颜色分析、材质分析等
+    """
+    # 检测结果
+    detection: Dict[str, Any] = field(default_factory=dict)
+    
+    # 环境分类
+    environment: Dict[str, Any] = field(default_factory=dict)
+    
+    # 颜色分析
+    colors: Optional[Dict[str, Any]] = None
+    
+    # 材质分析
+    materials: Optional[Dict[str, Any]] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        result = {
+            "detection": self.detection,
+            "environment": self.environment,
+        }
+        if self.colors:
+            result["colors"] = self.colors
+        if self.materials:
+            result["materials"] = self.materials
+        return result
+
+
+@dataclass
+class VideoMetrics:
+    """
+    单个视频的完整分析结果
+    
+    聚合所有模块的输出
+    """
+    path: str
+    visual: Optional[VisualOutput] = None
+    audio: Optional[AudioOutput] = None
+    asr: Optional[ASROutput] = None
+    yolo: Optional[YOLOOutput] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        result = {"path": self.path}
+        if self.visual:
+            result["visual"] = self.visual.to_dict()
+        if self.audio:
+            result["audio"] = self.audio.to_dict()
+        if self.asr:
+            result["asr"] = self.asr.to_dict()
+        if self.yolo:
+            result["yolo"] = self.yolo.to_dict()
+        return result
+
+
+@dataclass
+class ConsensusInput(StepInput):
+    """
+    共识计算输入
+    
+    接收多个视频的分析结果
+    """
+    video_metrics: List[VideoMetrics] = field(default_factory=list)
+
+
+@dataclass
+class ConsensusOutput(StepOutput):
+    """
+    跨视频共识输出
+    
+    包含: 多数票决定的离散特征、中位数计算的数值特征等
+    """
+    # 视觉共识
+    camera_angle: str = "N/A"
+    focal_length_tendency: str = "N/A"
+    camera_motion: str = "N/A"
+    composition_rule_of_thirds: str = "N/A"
+    scene_category: str = "N/A"
+    hue_family: str = "N/A"
+    saturation: str = "N/A"
+    brightness: str = "N/A"
+    contrast: str = "N/A"
+    cct: Optional[float] = None
+    natural_light_ratio: Optional[float] = None
+    artificial_light_ratio: Optional[float] = None
+    cuts_per_minute: Optional[float] = None
+    avg_shot_length: Optional[float] = None
+    transition_type: str = "N/A"
+    countertop_color: str = "N/A"
+    countertop_texture: str = "N/A"
+    
+    # 音频共识
+    beat_alignment: Optional[float] = None
+    bgm_style: str = "N/A"
+    bgm_mood: str = "N/A"
+    bgm_instruments: List[str] = field(default_factory=list)
+    tempo_bpm: Optional[float] = None
+    percussive_ratio: Optional[float] = None
+    speech_ratio: Optional[float] = None
+    key_signature: str = "N/A"
+    
+    # YOLO 共识
+    yolo_environment: str = "N/A"
+    yolo_style: str = "N/A"
+    yolo_object_colors: Dict[str, str] = field(default_factory=dict)
+    yolo_object_materials: Dict[str, str] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "camera_angle": self.camera_angle,
+            "focal_length_tendency": self.focal_length_tendency,
+            "camera_motion": self.camera_motion,
+            "composition_rule_of_thirds": self.composition_rule_of_thirds,
+            "scene_category": self.scene_category,
+            "hue_family": self.hue_family,
+            "saturation": self.saturation,
+            "brightness": self.brightness,
+            "contrast": self.contrast,
+            "cct": self.cct,
+            "natural_light_ratio": self.natural_light_ratio,
+            "artificial_light_ratio": self.artificial_light_ratio,
+            "cuts_per_minute": self.cuts_per_minute,
+            "avg_shot_length": self.avg_shot_length,
+            "transition_type": self.transition_type,
+            "countertop_color": self.countertop_color,
+            "countertop_texture": self.countertop_texture,
+            "beat_alignment": self.beat_alignment,
+            "bgm_style": self.bgm_style,
+            "bgm_mood": self.bgm_mood,
+            "bgm_instruments": self.bgm_instruments,
+            "tempo_bpm": self.tempo_bpm,
+            "percussive_ratio": self.percussive_ratio,
+            "speech_ratio": self.speech_ratio,
+            "key_signature": self.key_signature,
+            "yolo_environment": self.yolo_environment,
+            "yolo_style": self.yolo_style,
+            "yolo_object_colors": self.yolo_object_colors,
+            "yolo_object_materials": self.yolo_object_materials,
+        }
+
+
+@dataclass
+class ReportInput(StepInput):
+    """
+    报告生成输入
+    """
+    video_metrics: List[VideoMetrics] = field(default_factory=list)
+    consensus: Optional[ConsensusOutput] = None
+    output_path: str = "style_report.docx"
+    show_screenshots: bool = True
+
+
+@dataclass
+class ReportOutput(StepOutput):
+    """
+    报告生成输出
+    """
+    report_path: str = ""
+
+
+# ============================================================================
+# 步骤基类
+# ============================================================================
+
+InputT = TypeVar("InputT", bound=StepInput)
+OutputT = TypeVar("OutputT", bound=StepOutput)
+
+
+class PipelineStep(ABC, Generic[InputT, OutputT]):
+    """
+    流水线步骤基类
+    
+    每个步骤必须实现:
+    - name: 步骤名称
+    - description: 步骤描述
+    - run(): 执行步骤的主方法
+    
+    使用示例:
+        step = VisualAnalysisStep()
+        input_data = VideoInput(video_path=Path("video.mp4"))
+        output = step.run(input_data)
+        print(f"分析完成: {output.camera_angle}")
+    """
+    
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """步骤名称"""
+        pass
+    
+    @property
+    @abstractmethod
+    def description(self) -> str:
+        """步骤描述"""
+        pass
+    
+    @abstractmethod
+    def run(self, input_data: InputT) -> OutputT:
+        """
+        执行步骤
+        
+        Args:
+            input_data: 步骤输入数据
+            
+        Returns:
+            步骤输出数据
+        """
+        pass
+    
+    def __str__(self) -> str:
+        return f"{self.name}: {self.description}"
+    
+    def log_start(self, input_data: InputT) -> None:
+        """记录步骤开始"""
+        logger.info(f"[{self.name}] 开始执行...")
+    
+    def log_complete(self, output: OutputT) -> None:
+        """记录步骤完成"""
+        if output.success:
+            logger.info(f"[{self.name}] ✓ 执行完成")
+        else:
+            logger.error(f"[{self.name}] ✗ 执行失败: {output.error_message}")
