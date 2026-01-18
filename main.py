@@ -10,16 +10,116 @@
   2. 单步执行: 按需调用特定分析模块
 
 流水线步骤:
-1. visual  -> 视觉分析 (色彩、镜头、构图、场景、剪辑)
-2. audio   -> 音频分析 (BPM、节拍、能量、BGM风格、情绪)
-3. asr     -> ASR分析 (语音转录、语速、口头禅、韵律、情感)
-4. yolo    -> YOLO检测 (物体检测、环境分类、颜色、材质)
-5. consensus -> 共识计算 (跨视频特征聚合)
-6. report  -> 报告生成 (Word文档)
+1. visual    -> VisualOutput   (色彩、镜头、构图、场景、剪辑)
+2. audio     -> AudioOutput    (BPM、节拍、能量、BGM风格、情绪)
+3. asr       -> ASROutput      (语音转录、语速、口头禅、韵律、情感)
+4. yolo      -> YOLOOutput     (物体检测、环境分类、颜色、材质)
+5. consensus -> ConsensusOutput (跨视频特征聚合)
+6. report    -> ReportOutput   (Word文档)
 
-命令行使用示例:
+================================================================================
+单独使用每个模块 (Python API)
+================================================================================
+
+# 1. 视觉分析模块
+from pathlib import Path
+from steps import VisualAnalysisStep, VideoInput
+
+step = VisualAnalysisStep()
+input_data = VideoInput(video_path=Path("video.mp4"), work_dir=Path("work"))
+output = step.run(input_data)
+print(f"镜头角度: {output.camera_angle}")
+print(f"色调: {output.hue_family}")
+print(f"剪辑数: {output.cuts}")
+
+# 2. 音频分析模块
+from steps import AudioAnalysisStep, AudioInput
+
+step = AudioAnalysisStep()
+input_data = AudioInput(audio_path=Path("audio.wav"))
+output = step.run(input_data)
+print(f"BPM: {output.tempo_bpm}")
+print(f"BGM风格: {output.bgm_style}")
+print(f"情绪: {output.mood}")
+
+# 3. ASR 分析模块
+from steps import ASRAnalysisStep, ASRInput
+
+step = ASRAnalysisStep()
+input_data = ASRInput(
+    audio_path=Path("audio.wav"),
+    language="en",
+    enable_prosody=True,
+    enable_emotion=True
+)
+output = step.run(input_data)
+print(f"转录文本: {output.text[:100]}...")
+print(f"语速: {output.words_per_minute:.1f} wpm")
+print(f"口头禅: {output.catchphrases}")
+
+# 4. YOLO 检测模块
+from steps import YOLOAnalysisStep, YOLOInput
+
+step = YOLOAnalysisStep()
+input_data = YOLOInput(
+    video_path=Path("video.mp4"),
+    enable_colors=True,
+    enable_materials=True
+)
+output = step.run(input_data)
+print(f"环境类型: {output.environment.get('environment_type')}")
+print(f"检测物体数: {output.detection.get('unique_objects')}")
+
+# 5. 共识计算模块
+from steps import ConsensusStep, ConsensusInput, VideoMetrics
+
+step = ConsensusStep()
+input_data = ConsensusInput(video_metrics=[vm1, vm2, vm3])  # VideoMetrics 列表
+output = step.run(input_data)
+print(f"共识镜头角度: {output.camera_angle}")
+print(f"共识BGM风格: {output.bgm_style}")
+
+# 6. 报告生成模块
+from steps import ReportGenerationStep, ReportInput
+
+step = ReportGenerationStep()
+input_data = ReportInput(
+    video_metrics=[vm1, vm2, vm3],
+    consensus=consensus_output,
+    output_path="report.docx"
+)
+output = step.run(input_data)
+print(f"报告已生成: {output.report_path}")
+
+================================================================================
+使用 ModularPipeline (单步执行)
+================================================================================
+
+from pathlib import Path
+from pipeline_runner import ModularPipeline, PipelineConfig
+
+config = PipelineConfig(
+    video_paths=[Path("v1.mp4"), Path("v2.mp4"), Path("v3.mp4")],
+    audio_paths=[Path("a1.wav"), Path("a2.wav"), Path("a3.wav")],
+    modules=["visual", "audio"]
+)
+pipeline = ModularPipeline(config)
+
+# 单独执行某个分析
+visual_output = pipeline.run_visual_analysis(Path("v1.mp4"))
+audio_output = pipeline.run_audio_analysis(Path("a1.wav"))
+asr_output = pipeline.run_asr_analysis(Path("a1.wav"))
+yolo_output = pipeline.run_yolo_analysis(Path("v1.mp4"))
+
+================================================================================
+命令行使用示例
+================================================================================
+
   # 基础使用 (默认 visual + audio)
   python main.py -v v1.mp4 v2.mp4 v3.mp4 -a a1.wav a2.wav a3.wav -o report.docx
+
+  # 仅视觉分析 (不需要音频)
+  python main.py -v v1.mp4 v2.mp4 v3.mp4 --modules visual -o report.docx
 
   # 启用所有模块
   python main.py -v v1.mp4 v2.mp4 v3.mp4 -a a1.wav a2.wav a3.wav \\
@@ -28,6 +128,10 @@
   # 自定义模块顺序
   python main.py -v v1.mp4 v2.mp4 v3.mp4 -a a1.wav a2.wav a3.wav \\
                  --modules visual,audio,yolo -o report.docx
+
+  # 分步调试模式
+  python main.py -v v1.mp4 v2.mp4 v3.mp4 -a a1.wav a2.wav a3.wav \\
+                 --step-debug -o report.docx
 """
 
 import sys
