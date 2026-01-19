@@ -257,7 +257,7 @@ def add_references_section(doc):
         "YOLOv8 (Ultralytics): Object Detection - https://docs.ultralytics.com/",
         "Whisper: Speech Recognition - https://github.com/openai/whisper",
         "PySceneDetect: Shot Boundary Detection - https://www.scenedetect.com/",
-        "Essentia: Music Information Retrieval - https://essentia.upf.edu/",
+        "HuggingFace Transformers: Audio Classification - https://huggingface.co/",
         "python-docx: Word Document Generation - https://python-docx.readthedocs.io/"
     ]
     

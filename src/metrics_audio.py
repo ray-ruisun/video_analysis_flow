@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Audio metrics extraction module.
+Audio metrics extraction module (PyTorch + HuggingFace 版本)
 
-Analyzes tempo (BPM), beat timing, energy distribution, narration presence,
-BGM style, instruments, and mood.
+使用纯 PyTorch 生态系统，避免 TensorFlow 依赖:
+- librosa: 基础音频分析 (BPM, 节拍, 能量, 频谱)
+- transformers: HuggingFace 模型 (音乐分类, 情绪分析)
+
+分析内容:
+- 节奏分析: BPM, 节拍时间点, 打击乐比例
+- 能量分析: RMS 能量, 能量方差
+- 频谱分析: 质心, 平坦度, 过零率, rolloff
+- BGM 风格分类: 使用 HuggingFace 音频分类模型
+- 情绪分析: 使用 HuggingFace 音频情绪模型
 """
 
 import os
 import numpy as np
 from loguru import logger
+from pathlib import Path
 
 # Required dependencies
 try:
@@ -19,67 +28,197 @@ try:
 except ImportError as e:
     logger.error(f"librosa/soundfile not installed: {e}")
     logger.error("Install with: pip install librosa soundfile")
-    raise ImportError("librosa and soundfile are required. Install with: pip install librosa soundfile")
+    raise ImportError("librosa and soundfile are required.")
 
-# Essentia is optional - provides BGM style, mood, and instrument detection
-ESSENTIA_AVAILABLE = False
-MUSIC_EXTRACTOR = None
+import torch
+
+# HuggingFace transformers for audio classification (optional)
+TRANSFORMERS_AUDIO_AVAILABLE = False
+_AUDIO_CLASSIFIER = None
+_AUDIO_FEATURE_EXTRACTOR = None
 
 try:
-    import essentia.standard as es
-    # Try to create MusicExtractor with different parameter combinations
-    # (API changed between versions)
-    try:
-        # Newer version (without highlevelStats)
-        MUSIC_EXTRACTOR = es.MusicExtractor(
-            lowlevelStats=['mean', 'stdev'],
-            rhythmStats=['mean', 'stdev'],
-            tonalStats=['mean', 'stdev']
-        )
-        ESSENTIA_AVAILABLE = True
-        logger.debug("Essentia MusicExtractor initialized (new API)")
-    except (TypeError, ValueError):
-        try:
-            # Older version (with highlevelStats)
-            MUSIC_EXTRACTOR = es.MusicExtractor(
-                lowlevelStats=['mean', 'stdev'],
-                rhythmStats=['mean', 'stdev'],
-                tonalStats=['mean', 'stdev'],
-                highlevelStats=['mean']
-            )
-            ESSENTIA_AVAILABLE = True
-            logger.debug("Essentia MusicExtractor initialized (legacy API)")
-        except Exception as e:
-            logger.warning(f"Failed to initialize MusicExtractor: {e}")
-            ESSENTIA_AVAILABLE = False
+    from transformers import AutoModelForAudioClassification, AutoFeatureExtractor
+    TRANSFORMERS_AUDIO_AVAILABLE = True
 except ImportError:
-    logger.warning("Essentia not available. BGM style, mood, and instrument detection will be limited.")
-    logger.warning("Install with: pip install essentia-tensorflow")
+    logger.warning("transformers not available for audio classification.")
+    logger.warning("Install with: pip install transformers")
 
-MOOD_TAGS = [
-    "mood_happy",
-    "mood_sad",
-    "mood_aggressive",
-    "mood_relaxed",
-    "mood_party",
-    "mood_acoustic",
-    "mood_electronic"
-]
+# 缓存目录
+CACHE_DIR = Path.home() / ".cache" / "video_style_pipeline"
+
+# HuggingFace 模型配置
+# 音乐分类模型 (可选择不同模型)
+MUSIC_CLASSIFIER_MODEL = "MIT/ast-finetuned-audioset-10-10-0.4593"  # AudioSet 分类
+# 备选: "facebook/wav2vec2-base" + 自定义分类头
+
+# 情绪相关的 AudioSet 标签映射
+MOOD_LABEL_MAPPING = {
+    "happy": ["Happy music", "Exciting music", "Funny music"],
+    "sad": ["Sad music", "Tender music"],
+    "energetic": ["Electronic music", "Techno", "Dance music", "Drum and bass"],
+    "calm": ["Ambient music", "New-age music", "Meditation"],
+    "aggressive": ["Heavy metal", "Punk rock", "Grunge"],
+}
+
+# BGM 风格标签映射
+GENRE_LABEL_MAPPING = {
+    "Electronic": ["Electronic music", "Techno", "House music", "Trance music", "Drum and bass", "Dubstep"],
+    "Pop": ["Pop music", "Dance music", "Disco"],
+    "Rock": ["Rock music", "Heavy metal", "Punk rock", "Grunge", "Progressive rock"],
+    "Classical": ["Classical music", "Orchestra", "Piano", "Violin"],
+    "Jazz": ["Jazz", "Blues", "Soul music", "Funk"],
+    "Ambient": ["Ambient music", "New-age music", "Drone"],
+    "Hip-Hop": ["Hip hop music", "Rap", "Beatboxing"],
+    "Folk": ["Folk music", "Country", "Bluegrass"],
+}
+
+
+def _load_audio_classifier():
+    """Lazy-load HuggingFace audio classification model."""
+    global _AUDIO_CLASSIFIER, _AUDIO_FEATURE_EXTRACTOR
+    
+    if not TRANSFORMERS_AUDIO_AVAILABLE:
+        return None, None
+    
+    if _AUDIO_CLASSIFIER is not None:
+        return _AUDIO_CLASSIFIER, _AUDIO_FEATURE_EXTRACTOR
+    
+    try:
+        logger.info(f"Loading HuggingFace audio classifier: {MUSIC_CLASSIFIER_MODEL}")
+        _AUDIO_FEATURE_EXTRACTOR = AutoFeatureExtractor.from_pretrained(
+            MUSIC_CLASSIFIER_MODEL,
+            cache_dir=str(CACHE_DIR / "hf_models")
+        )
+        _AUDIO_CLASSIFIER = AutoModelForAudioClassification.from_pretrained(
+            MUSIC_CLASSIFIER_MODEL,
+            cache_dir=str(CACHE_DIR / "hf_models")
+        )
+        _AUDIO_CLASSIFIER.eval()
+        logger.info("Audio classifier loaded successfully")
+        return _AUDIO_CLASSIFIER, _AUDIO_FEATURE_EXTRACTOR
+    except Exception as e:
+        logger.warning(f"Failed to load audio classifier: {e}")
+        return None, None
+
+
+def classify_audio_with_hf(y: np.ndarray, sr: int) -> dict:
+    """
+    使用 HuggingFace 模型分类音频
+    
+    Args:
+        y: 音频波形
+        sr: 采样率
+        
+    Returns:
+        dict: 分类结果 (genre, mood, top_labels)
+    """
+    model, feature_extractor = _load_audio_classifier()
+    
+    if model is None:
+        return {
+            "genre": "Unknown",
+            "mood": "Unknown",
+            "top_labels": [],
+            "method": "N/A"
+        }
+    
+    try:
+        # 重采样到模型期望的采样率 (通常 16kHz)
+        target_sr = feature_extractor.sampling_rate
+        if sr != target_sr:
+            y = librosa.resample(y, orig_sr=sr, target_sr=target_sr)
+        
+        # 截取或填充到合适长度 (10秒)
+        max_length = target_sr * 10
+        if len(y) > max_length:
+            # 取中间部分
+            start = (len(y) - max_length) // 2
+            y = y[start:start + max_length]
+        elif len(y) < max_length:
+            y = np.pad(y, (0, max_length - len(y)))
+        
+        # 提取特征
+        inputs = feature_extractor(
+            y,
+            sampling_rate=target_sr,
+            return_tensors="pt"
+        )
+        
+        # 推理
+        with torch.no_grad():
+            outputs = model(**inputs)
+            probs = torch.softmax(outputs.logits, dim=-1)[0]
+        
+        # 获取标签
+        id2label = model.config.id2label
+        top_k = 10
+        top_probs, top_indices = torch.topk(probs, k=min(top_k, len(probs)))
+        
+        top_labels = []
+        for prob, idx in zip(top_probs, top_indices):
+            label = id2label.get(idx.item(), f"label_{idx.item()}")
+            top_labels.append({"label": label, "probability": float(prob)})
+        
+        # 映射到 genre 和 mood
+        genre = _map_to_genre(top_labels)
+        mood = _map_to_mood(top_labels)
+        
+        return {
+            "genre": genre,
+            "mood": mood,
+            "top_labels": top_labels,
+            "method": "HuggingFace AST"
+        }
+        
+    except Exception as e:
+        logger.warning(f"HuggingFace audio classification failed: {e}")
+        return {
+            "genre": "Unknown",
+            "mood": "Unknown",
+            "top_labels": [],
+            "method": "failed"
+        }
+
+
+def _map_to_genre(top_labels: list) -> str:
+    """将 AudioSet 标签映射到音乐风格"""
+    label_names = [item["label"] for item in top_labels[:5]]
+    
+    for genre, keywords in GENRE_LABEL_MAPPING.items():
+        for keyword in keywords:
+            if any(keyword.lower() in label.lower() for label in label_names):
+                return genre
+    
+    # 如果没有匹配，返回最高概率的标签
+    if top_labels:
+        return top_labels[0]["label"]
+    return "Unknown"
+
+
+def _map_to_mood(top_labels: list) -> str:
+    """将 AudioSet 标签映射到情绪"""
+    label_names = [item["label"] for item in top_labels[:5]]
+    
+    for mood, keywords in MOOD_LABEL_MAPPING.items():
+        for keyword in keywords:
+            if any(keyword.lower() in label.lower() for label in label_names):
+                return mood.capitalize()
+    
+    return "Neutral"
 
 
 def extract_audio_metrics(audio_path):
     """
     Extract comprehensive audio metrics from a wav file.
     
+    使用 librosa 进行基础分析，HuggingFace 进行高级分类。
+    
     Args:
         audio_path: Path to audio file (preferably 22.05kHz mono wav)
         
     Returns:
-        dict: Audio metrics including tempo, beats, energy, speech ratio, instruments, etc.
-        
-    Raises:
-        FileNotFoundError: If audio file not found
-        ValueError: If audio processing fails
+        dict: Audio metrics including tempo, beats, energy, genre, mood, etc.
     """
     if not audio_path:
         logger.error("Audio path is None or empty")
@@ -91,7 +230,7 @@ def extract_audio_metrics(audio_path):
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
     
     try:
-        # Load audio (force mono, 22.05kHz)
+        # Load audio (force mono, 22.05kHz for librosa analysis)
         logger.debug(f"Loading audio from {audio_path}")
         y, sr = librosa.load(audio_path, sr=22050, mono=True)
         
@@ -102,10 +241,12 @@ def extract_audio_metrics(audio_path):
         # Normalize
         y = y / (np.max(np.abs(y)) + 1e-6)
         
+        # ====== 基础分析 (librosa) ======
+        
         # Harmonic-Percussive Source Separation
         y_harmonic, y_percussive = librosa.effects.hpss(y)
         
-        # Percussive energy ratio (proxy for rhythmic content)
+        # Percussive energy ratio
         percussive_ratio = float(
             np.sum(np.abs(y_percussive)) / (np.sum(np.abs(y)) + 1e-6)
         )
@@ -124,10 +265,10 @@ def extract_audio_metrics(audio_path):
         zero_crossing_rate = librosa.feature.zero_crossing_rate(y)
         mean_zcr = float(np.mean(zero_crossing_rate))
         
-        # Speech presence proxy (combination of flatness and ZCR)
+        # Speech presence proxy
         speech_ratio = float(np.clip(mean_flatness * 1.8 + mean_zcr * 0.8, 0, 1))
         
-        # RMS energy over time
+        # RMS energy
         rms = librosa.feature.rms(y=y)[0]
         mean_energy = float(np.mean(rms))
         energy_variance = float(np.var(rms))
@@ -136,42 +277,22 @@ def extract_audio_metrics(audio_path):
         rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.85)
         mean_rolloff = float(np.mean(rolloff))
         
-        # Essentia high-level descriptors (optional)
-        genre = "Unknown"
-        mood_summary = "Unknown"
-        mood_tags = []
-        instruments = {"detected_instruments": [], "method": "N/A"}
-        tonal_key = None
+        # Key signature estimation using chroma
+        chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+        chroma_mean = np.mean(chroma, axis=1)
+        key_idx = int(np.argmax(chroma_mean))
+        key_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        tonal_key = f"{key_names[key_idx]} (estimated)"
         
-        if ESSENTIA_AVAILABLE:
-            try:
-                essentia_features = extract_essentia_features(audio_path)
-                if essentia_features:
-                    # Genre detection
-                    if 'highlevel.genre_dortmund.value' in essentia_features:
-                        genre = str(essentia_features['highlevel.genre_dortmund.value'])
-                    
-                    # Mood analysis
-                    try:
-                        mood_summary, mood_tags = summarize_mood_from_essentia(essentia_features)
-                    except Exception as e:
-                        logger.warning(f"Mood analysis failed: {e}")
-                    
-                    # Instrument detection
-                    try:
-                        instruments = detect_instruments(essentia_features)
-                    except Exception as e:
-                        logger.warning(f"Instrument detection failed: {e}")
-                    
-                    # Key signature
-                    if 'tonal.key_key' in essentia_features and 'tonal.key_scale' in essentia_features:
-                        tonal_key = f"{str(essentia_features['tonal.key_key']).capitalize()} {str(essentia_features['tonal.key_scale']).capitalize()}"
-            except Exception as e:
-                logger.warning(f"Essentia analysis failed, using librosa fallback: {e}")
-        else:
-            logger.debug("Essentia not available, using librosa-only analysis")
-            # Fallback: estimate mood from tempo and energy
-            mood_summary = classify_bgm_mood(float(tempo), percussive_ratio, mean_centroid, energy_variance)
+        # ====== 高级分析 (HuggingFace) ======
+        hf_result = classify_audio_with_hf(y, sr)
+        
+        # 如果 HuggingFace 分析失败，使用 librosa 估算情绪
+        genre = hf_result.get("genre", "Unknown")
+        mood = hf_result.get("mood", "Unknown")
+        
+        if mood == "Unknown":
+            mood = classify_bgm_mood(float(tempo), percussive_ratio, mean_centroid, energy_variance)
         
         result = {
             "tempo_bpm": float(tempo),
@@ -183,9 +304,12 @@ def extract_audio_metrics(audio_path):
             "zero_crossing_rate": mean_zcr,
             "speech_ratio": speech_ratio,
             "bgm_style": genre,
-            "mood": mood_summary,
-            "mood_tags": mood_tags,
-            "instruments": instruments,
+            "mood": mood,
+            "mood_tags": hf_result.get("top_labels", []),
+            "instruments": {
+                "detected_instruments": [],
+                "method": hf_result.get("method", "librosa")
+            },
             "mean_energy": mean_energy,
             "energy_variance": energy_variance,
             "spectral_rolloff": mean_rolloff,
@@ -200,80 +324,6 @@ def extract_audio_metrics(audio_path):
         raise
 
 
-def extract_essentia_features(audio_path):
-    """Run Essentia MusicExtractor on the audio file."""
-    if not ESSENTIA_AVAILABLE or MUSIC_EXTRACTOR is None:
-        logger.warning("Essentia MusicExtractor not available")
-        return None
-    
-    try:
-        features, _ = MUSIC_EXTRACTOR(audio_path)
-        return features
-    except Exception as e:
-        logger.error(f"Essentia MusicExtractor failed: {e}")
-        return None
-
-
-def summarize_mood_from_essentia(essentia_features):
-    """Summarize mood predictions from Essentia high-level descriptors."""
-    if essentia_features is None:
-        return "Unknown", []
-    
-    mood_entries = []
-    for tag in MOOD_TAGS:
-        value_key = f"highlevel.{tag}.value"
-        prob_key = f"highlevel.{tag}.probability"
-        if value_key in essentia_features and prob_key in essentia_features:
-            label = str(essentia_features[value_key])
-            probability = float(essentia_features[prob_key])
-            mood_entries.append({"label": label, "probability": probability})
-    
-    if not mood_entries:
-        logger.warning("Essentia mood descriptors not found in features")
-        return "Unknown", []
-    
-    top_entry = max(mood_entries, key=lambda item: item["probability"])
-    summary = f"{top_entry['label']} ({top_entry['probability']:.2f})"
-    return summary, mood_entries
-
-
-def detect_instruments(essentia_features):
-    """
-    Detect instrumentation characteristics from Essentia high-level descriptors.
-    """
-    if essentia_features is None:
-        return {"detected_instruments": [], "method": "N/A"}
-    
-    instrumentation = []
-    
-    # Check if the required key exists
-    voice_key = 'highlevel.voice_instrumental.value'
-    if voice_key not in essentia_features:
-        return {"detected_instruments": [], "method": "Essentia (limited)"}
-    
-    voice_value = str(essentia_features[voice_key])
-    if voice_value == "instrumental":
-        instrumentation.append("Instrumental focus")
-    else:
-        instrumentation.append("Vocal focus")
-    
-    # Safely check for acoustic/electronic keys
-    acoustic_key = 'highlevel.mood_acoustic.value'
-    electronic_key = 'highlevel.mood_electronic.value'
-    
-    if acoustic_key in essentia_features and str(essentia_features[acoustic_key]) == "acoustic":
-        instrumentation.append("Acoustic timbre")
-    if electronic_key in essentia_features and str(essentia_features[electronic_key]) == "electronic":
-        instrumentation.append("Electronic elements")
-    
-    instrumentation = list(dict.fromkeys(instrumentation))  # deduplicate while preserving order
-    
-    return {
-        "detected_instruments": instrumentation,
-        "method": "Essentia MusicExtractor"
-    }
-
-
 def calculate_beat_alignment(video_duration, num_cuts, beat_times, tolerance=0.15):
     """
     Calculate how well cuts align with musical beats.
@@ -286,9 +336,6 @@ def calculate_beat_alignment(video_duration, num_cuts, beat_times, tolerance=0.1
         
     Returns:
         float: Proportion of cuts aligned with beats (0-1)
-        
-    Raises:
-        ValueError: If inputs are invalid
     """
     if num_cuts <= 0:
         logger.error(f"Invalid number of cuts: {num_cuts}")
@@ -302,14 +349,13 @@ def calculate_beat_alignment(video_duration, num_cuts, beat_times, tolerance=0.1
         logger.error(f"Invalid video duration: {video_duration}")
         raise ValueError(f"Video duration must be positive, got {video_duration}")
     
-    # Approximate cut times (assuming uniform distribution)
+    # Approximate cut times
     approx_cut_times = np.linspace(0, video_duration, num=num_cuts + 2)[1:-1]
     
     beat_array = np.array(beat_times)
     aligned_count = 0
     
     for cut_time in approx_cut_times:
-        # Check if any beat is within tolerance
         if beat_array.size > 0:
             min_distance = np.min(np.abs(beat_array - cut_time))
             if min_distance <= tolerance:
@@ -323,34 +369,20 @@ def calculate_beat_alignment(video_duration, num_cuts, beat_times, tolerance=0.1
 def analyze_energy_dynamics(audio_path, window_sec=5.0):
     """
     Analyze energy dynamics over time.
-    
-    Args:
-        audio_path: Path to audio file
-        window_sec: Window size for energy analysis
-        
-    Returns:
-        dict: Energy dynamics metrics
-        
-    Raises:
-        FileNotFoundError: If audio file not found
     """
     if not os.path.exists(audio_path):
-        logger.error(f"Audio file not found: {audio_path}")
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
     
     try:
         y, sr = librosa.load(audio_path, sr=22050, mono=True)
         y = y / (np.max(np.abs(y)) + 1e-6)
         
-        # Calculate RMS energy in windows
         hop_length = int(sr * window_sec)
         rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
         
-        # Dynamics metrics
         energy_range = float(np.max(rms) - np.min(rms))
         energy_std = float(np.std(rms))
         
-        # Detect energy peaks (buildups/drops)
         energy_derivative = np.diff(rms)
         num_peaks = len([x for x in energy_derivative if abs(x) > 0.1])
         
@@ -368,16 +400,7 @@ def analyze_energy_dynamics(audio_path, window_sec=5.0):
 
 def classify_bgm_mood(tempo, percussive_ratio, spectral_centroid, energy_variance):
     """
-    Classify BGM mood based on audio features.
-    
-    Args:
-        tempo: BPM
-        percussive_ratio: Proportion of percussive energy
-        spectral_centroid: Mean spectral centroid
-        energy_variance: Variance in energy
-        
-    Returns:
-        str: Mood description
+    Classify BGM mood based on audio features (librosa fallback).
     """
     if tempo < 90:
         mood = "Calm/Relaxed"

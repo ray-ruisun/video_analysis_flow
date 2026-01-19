@@ -8,8 +8,8 @@ ASR (自动语音识别) 分析步骤
 - 语速分析 (每秒/每分钟词数)
 - 口头禅检测 (高频短语)
 - 停顿分析
-- 韵律分析 (可选, 需要 Praat)
-- 情感分析 (可选, 需要 SpeechBrain)
+- 韵律分析 (使用 librosa)
+- 情感分析 (使用 HuggingFace wav2vec2)
 """
 
 from dataclasses import dataclass, field
@@ -34,8 +34,8 @@ class ASRInput(StepInput):
         audio_path: 音频文件路径
         language: 语言代码 (默认 "en")
         model_size: Whisper 模型大小 ("tiny", "base", "small", "medium", "large")
-        enable_prosody: 是否启用韵律分析 (需要 Praat)
-        enable_emotion: 是否启用情感分析 (需要 SpeechBrain)
+        enable_prosody: 是否启用韵律分析 (使用 librosa)
+        enable_emotion: 是否启用情感分析 (使用 HuggingFace)
     """
     audio_path: Path
     language: str = "en"
