@@ -21,7 +21,7 @@ install-full:
 
 web:
 	@echo "🌐 Starting Gradio Web UI..."
-	@echo "📍 Open http://localhost:7860 in your browser"
+	@echo "📍 Open http://localhost:8088 in your browser"
 	python app.py
 
 extract-audio:

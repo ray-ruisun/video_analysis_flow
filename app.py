@@ -913,18 +913,16 @@ def export_json() -> Tuple[str, str]:
 # =============================================================================
 # Gradio 界面
 # =============================================================================
+CUSTOM_CSS = """
+.container { max-width: 1600px; margin: auto; }
+.result-box { min-height: 300px; }
+.step-btn { min-width: 120px; }
+.lang-btn { min-width: 80px; }
+.progress-box { background: #f0f0f0; padding: 10px; border-radius: 8px; }
+"""
+
 def create_ui():
-    with gr.Blocks(
-        title="Video Style Analysis",
-        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate"),
-        css="""
-        .container { max-width: 1600px; margin: auto; }
-        .result-box { min-height: 300px; }
-        .step-btn { min-width: 120px; }
-        .lang-btn { min-width: 80px; }
-        .progress-box { background: #f0f0f0; padding: 10px; border-radius: 8px; }
-        """
-    ) as demo:
+    with gr.Blocks(title="Video Style Analysis") as demo:
         
         lang_state = gr.State("zh")
         
@@ -1066,5 +1064,18 @@ def create_ui():
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Video Style Analysis Web UI")
+    parser.add_argument("--port", type=int, default=8088, help="Server port (default: 8088)")
+    parser.add_argument("--share", action="store_true", help="Create public link")
+    args = parser.parse_args()
+    
     demo = create_ui()
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False, show_error=True)
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=args.port,
+        share=args.share,
+        show_error=True,
+        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate"),
+        css=CUSTOM_CSS
+    )
