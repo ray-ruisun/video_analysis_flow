@@ -42,14 +42,14 @@ import numpy as np
 # 模型配置
 # ============================================================================
 
-# 默认使用 YOLO26s (平衡精度和速度)
-DEFAULT_MODEL = "yolo26s.pt"
+# 默认使用 YOLO26x (最高精度)
+DEFAULT_MODEL = "yolo26x.pt"
 # 备选模型:
 # "yolo26n.pt"  - 最快，适合实时处理
-# "yolo26s.pt"  - 平衡 (推荐)
-# "yolo26m.pt"  - 更高精度
+# "yolo26s.pt"  - 平衡速度和精度
+# "yolo26m.pt"  - 较高精度
 # "yolo26l.pt"  - 高精度
-# "yolo26x.pt"  - 最高精度
+# "yolo26x.pt"  - 最高精度 (默认)
 
 # 全局模型缓存
 _YOLO_MODEL = None
@@ -303,7 +303,7 @@ def analyze_object_colors(frames, detection_results, color_samples=5):
         raise ValueError("Invalid detection results for color analysis")
     
     try:
-        model = YOLO(detection_results.get("model", "yolo26s.pt"))
+        model = YOLO(detection_results.get("model", "yolo26x.pt"))
         
         # Sample frames
         sampled_frames = frames[::max(1, len(frames) // color_samples)][:color_samples]
@@ -450,7 +450,7 @@ def analyze_object_materials(frames, detection_results, material_samples=5):
         raise ValueError("Invalid detection results for material analysis")
     
     try:
-        model = YOLO(detection_results.get("model", "yolo26s.pt"))
+        model = YOLO(detection_results.get("model", "yolo26x.pt"))
         
         # Sample frames
         sampled_frames = frames[::max(1, len(frames) // material_samples)][:material_samples]
@@ -552,7 +552,7 @@ def hue_to_color_name(hue):
         return "Purple/Magenta"
 
 
-def extract_full_yolo_metrics(frames, model_name="yolo26s.pt", 
+def extract_full_yolo_metrics(frames, model_name="yolo26x.pt", 
                               enable_colors=True, enable_materials=True,
                               confidence_threshold=0.25):
     """

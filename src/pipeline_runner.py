@@ -88,7 +88,7 @@ class PipelineConfig:
     enable_emotion: bool = True
     
     # YOLO 配置
-    yolo_model: str = "yolo26s.pt"
+    yolo_model: str = "yolo26x.pt"
     enable_yolo_colors: bool = True
     enable_yolo_materials: bool = True
     

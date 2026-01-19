@@ -577,7 +577,7 @@ def format_asr(output: ASROutput) -> str:
 {emotion_section}
 {prosody_section}
 
-### 📝 Transcript (Whisper large-v3-turbo)
+### 📝 Transcript (Whisper large-v3)
 ```
 {text_preview}
 ```
@@ -1876,7 +1876,7 @@ def create_ui():
                         )
                         
                         gr.Markdown("#### 🎤 Speech Recognition (ASR)")
-                        gr.Markdown("*large-v3-turbo = best, tiny = fastest*")
+                        gr.Markdown("*large-v3 = best accuracy, tiny = fastest*")
                         cfg_asr_model = gr.Dropdown(
                             choices=["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"],
                             value=cfg.asr.whisper_model,

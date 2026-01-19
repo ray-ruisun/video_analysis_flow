@@ -14,11 +14,11 @@ from pathlib import Path
 @dataclass
 class VisualConfig:
     """Visual analysis hyperparameters"""
-    # Frame sampling
-    target_frames: int = 50  # Number of frames to sample
+    # Frame sampling (more frames = better accuracy)
+    target_frames: int = 100  # Number of frames to sample
     frame_mode: str = "edge"  # Frame selection mode: "uniform", "edge", "scene"
     
-    # CLIP scene classification
+    # CLIP scene classification (large model for best accuracy)
     clip_model: str = "openai/clip-vit-large-patch14"
     clip_top_k: int = 5  # Top K scene categories to return
     
@@ -82,8 +82,8 @@ class AudioConfig:
 @dataclass
 class ASRConfig:
     """ASR (Speech Recognition) hyperparameters"""
-    # Whisper model
-    whisper_model: str = "large-v3-turbo"  # Options: tiny, base, small, medium, large-v3, large-v3-turbo
+    # Whisper model (large-v3 = most accurate, turbo = faster but slightly less accurate)
+    whisper_model: str = "large-v3"  # Options: tiny, base, small, medium, large-v3, large-v3-turbo
     whisper_compute_type: str = "float16"  # Options: float16, int8, int8_float16
     whisper_beam_size: int = 5
     whisper_vad_filter: bool = True
@@ -107,10 +107,11 @@ class ASRConfig:
 class YOLOConfig:
     """YOLO object detection hyperparameters (SOTA: YOLO26)"""
     # Model - YOLO26 (Jan 2026): https://huggingface.co/collections/merve/yolo26-models
-    model_name: str = "yolo26s.pt"  # Options: yolo26n.pt, yolo26s.pt, yolo26m.pt, yolo26l.pt, yolo26x.pt
+    # x = extra large = highest accuracy
+    model_name: str = "yolo26x.pt"  # Options: yolo26n.pt, yolo26s.pt, yolo26m.pt, yolo26l.pt, yolo26x.pt
     
-    # Detection
-    target_frames: int = 36  # Frames to analyze
+    # Detection (more frames = better coverage)
+    target_frames: int = 50  # Frames to analyze
     confidence_threshold: float = 0.25  # Minimum confidence
     iou_threshold: float = 0.45  # NMS IoU threshold
     max_detections: int = 300  # Maximum detections per frame
@@ -148,7 +149,7 @@ class AIDetectionConfig:
     # Uses CLIP embeddings to detect semantic inconsistencies between frames
     # More reliable than optical flow - understands content, not just pixels
     use_temporal: bool = True
-    temporal_frames: int = 16
+    temporal_frames: int = 32  # More frames = better temporal analysis
     
     # AIGC Detection (AI-Generated Content)
     # Model: umm-maybe/AI-image-detector
@@ -168,8 +169,8 @@ class AIDetectionConfig:
     min_face_size: int = 30
     no_face_threshold: float = 0.9  # If >90% frames have no face
     
-    # Frame sampling
-    num_frames: int = 16
+    # Frame sampling (more frames = more accurate detection)
+    num_frames: int = 32
     
     # Thresholds
     fake_threshold: float = 0.5
@@ -213,10 +214,10 @@ class ReportConfig:
 @dataclass
 class UIConfig:
     """UI/Frontend hyperparameters"""
-    # Gallery
-    gallery_frames: int = 12
+    # Gallery (more frames for better preview)
+    gallery_frames: int = 16
     gallery_columns: int = 4
-    gallery_rows: int = 3
+    gallery_rows: int = 4
     
     # Language
     default_language: str = "en"  # Options: en, zh
