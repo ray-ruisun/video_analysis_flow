@@ -41,7 +41,7 @@ torchaudio>=2.0.0
 speechbrain>=0.5.14
 
 # ASR 韵律分析 (可选，需要 enable_prosody=True)
-parselmouth>=0.4.0
+# parselmouth>=0.4.0
 
 # ============================================================================
 # 可选依赖
