@@ -903,6 +903,41 @@ def upload_video(video_file):
     return status, audio_str, frame_paths, get_video_list_html(), gr.update(choices=choices, value=current_value)
 
 
+def add_more_video(video_file):
+    """Add another video to the list via the Add Video file input"""
+    if video_file is None:
+        return get_video_list_html(), gr.update()
+    
+    import shutil
+    video_path = Path(video_file)
+    
+    # Create main work directory if not exists
+    if STATE.work_dir is None:
+        STATE.work_dir = Path(tempfile.mkdtemp(prefix="video_analysis_"))
+    
+    # Create unique subdirectory for this video
+    video_idx = len(STATE.videos)
+    video_work_dir = STATE.work_dir / f"video_{video_idx}"
+    video_work_dir.mkdir(exist_ok=True)
+    
+    # Copy video to work directory
+    dest_path = video_work_dir / video_path.name
+    shutil.copy(video_file, dest_path)
+    
+    # Add to video list
+    idx = STATE.add_video(dest_path, video_work_dir)
+    
+    # Extract audio
+    audio_path = extract_audio_from_video(dest_path, video_work_dir)
+    STATE.videos[idx].audio_path = audio_path
+    
+    # Don't change current selection - user can switch manually
+    # Just update the video list
+    choices = get_video_choices()
+    
+    return get_video_list_html(), gr.update(choices=choices)
+
+
 def delete_video(index: int):
     """Delete a video from the list"""
     if 0 <= index < len(STATE.videos):
@@ -1565,11 +1600,19 @@ def create_ui():
                         gr.Markdown("### 📤 Video Upload")
                         gr.Markdown("*Supports MP4, AVI, MOV, MKV. Upload single or multiple videos.*")
                         
-                        video_input = gr.Video(
-                            label="📤 Upload Video (click to add more)",
-                            height=280,
-                            elem_classes=["video-preview"]
-                        )
+                        with gr.Row():
+                            video_input = gr.Video(
+                                label="📤 Upload Video",
+                                height=240,
+                                elem_classes=["video-preview"],
+                                scale=3
+                            )
+                            with gr.Column(scale=1, min_width=120):
+                                add_video_input = gr.File(
+                                    label=t('add_video'),
+                                    file_types=["video"],
+                                    type="filepath"
+                                )
                         
                         upload_status = gr.Textbox(
                             label="Upload Status",
@@ -1874,6 +1917,9 @@ def create_ui():
         # ========== Event Handlers ==========
         video_input.change(fn=upload_video, inputs=[video_input],
                           outputs=[upload_status, audio_player, frame_gallery, video_list_html, video_selector])
+        
+        add_video_input.change(fn=add_more_video, inputs=[add_video_input],
+                              outputs=[video_list_html, video_selector])
         
         video_selector.change(fn=select_video_by_choice, inputs=[video_selector],
                              outputs=[upload_status, audio_player, frame_gallery])
