@@ -413,10 +413,35 @@ def format_visual(output: VisualOutput) -> str:
     if not output or not output.success:
         return f"❌ {t('analysis_failed')}"
     
+    # Scene categories with confidence
     scenes = "\n".join([
-        f"  • {s.get('label', '?')}: **{s.get('probability', 0):.1%}**"
+        f"| {s.get('label', '?')} | **{s.get('probability', 0):.1%}** |"
         for s in output.scene_categories[:5]
     ])
+    
+    # Camera angle distribution with confidence
+    camera_detail = output.camera_angle_detail or {}
+    camera_dist = camera_detail.get('distribution', {})
+    camera_conf = camera_detail.get('confidence', 0)
+    camera_dist_str = " | ".join([f"{k}: {v:.0%}" for k, v in sorted(camera_dist.items(), key=lambda x: x[1], reverse=True)[:3]]) if camera_dist else "N/A"
+    
+    # Hue distribution with confidence
+    hue_detail = output.hue_detail or {}
+    hue_dist = hue_detail.get('distribution', {})
+    hue_conf = hue_detail.get('confidence', 0)
+    hue_dist_str = " | ".join([f"{k}: {v:.0%}" for k, v in sorted(hue_dist.items(), key=lambda x: x[1], reverse=True)[:3]]) if hue_dist else "N/A"
+    
+    # Saturation distribution
+    sat_detail = output.saturation_detail or {}
+    sat_dist = sat_detail.get('distribution', {})
+    sat_conf = sat_detail.get('confidence', 0)
+    sat_dist_str = " | ".join([f"{k}: {v:.0%}" for k, v in sorted(sat_dist.items(), key=lambda x: x[1], reverse=True)[:3]]) if sat_dist else "N/A"
+    
+    # Brightness distribution
+    bright_detail = output.brightness_detail or {}
+    bright_dist = bright_detail.get('distribution', {})
+    bright_conf = bright_detail.get('confidence', 0)
+    bright_dist_str = " | ".join([f"{k}: {v:.0%}" for k, v in sorted(bright_dist.items(), key=lambda x: x[1], reverse=True)[:3]]) if bright_dist else "N/A"
     
     # CCT interpretation
     cct = output.cct_mean
@@ -450,20 +475,20 @@ def format_visual(output: VisualOutput) -> str:
 
 ### 📷 Camera & Composition
 
-| Metric | Value | Description |
-|:-------|:------|:------------|
-| **Camera Angle** | {output.camera_angle} | Viewer perspective (eye-level, overhead, low) |
-| **Focal Length** | {output.focal_length_tendency} | Wide-angle, normal, or telephoto |
+| Metric | Value | Confidence | Distribution |
+|:-------|:------|:----------:|:-------------|
+| **Camera Angle** | {output.camera_angle} | {camera_conf:.0%} | {camera_dist_str} |
+| **Focal Length** | {output.focal_length_tendency} | — | Wide/Normal/Telephoto |
 
 ### 🎨 Color Analysis
 
-| Metric | Value | Description |
-|:-------|:------|:------------|
-| **Dominant Hue** | {output.hue_family} | Primary color family |
-| **Saturation** | {output.saturation_band} | Color intensity (vivid/muted) |
-| **Brightness** | {output.brightness_band} | Light/dark overall |
-| **Contrast** | {output.contrast} | Dynamic range |
-| **Color Temp (CCT)** | {output.cct_mean:.0f}K | {cct_desc} |
+| Metric | Value | Confidence | Distribution |
+|:-------|:------|:----------:|:-------------|
+| **Dominant Hue** | {output.hue_family} | {hue_conf:.0%} | {hue_dist_str} |
+| **Saturation** | {output.saturation_band} | {sat_conf:.0%} | {sat_dist_str} |
+| **Brightness** | {output.brightness_band} | {bright_conf:.0%} | {bright_dist_str} |
+| **Contrast** | {output.contrast} | — | Dynamic range |
+| **Color Temp (CCT)** | {output.cct_mean:.0f}K | — | {cct_desc} |
 
 ### ✂️ Editing Pace
 
@@ -473,7 +498,9 @@ def format_visual(output: VisualOutput) -> str:
 | **Cuts/Minute** | {cut_rate:.1f} | {pace_desc} |
 
 ### 🏠 Scene Classification (CLIP)
-*Top detected scene types:*
+
+| Scene Type | Confidence |
+|:-----------|:----------:|
 {scenes}
 
 ---
@@ -492,6 +519,24 @@ def format_audio(output: AudioOutput) -> str:
     tempo_desc = "Fast-paced" if output.tempo_bpm > 120 else "Medium tempo" if output.tempo_bpm > 80 else "Slow, relaxed"
     percussive_desc = "Heavy drums" if output.percussive_ratio > 0.5 else "Moderate beats" if output.percussive_ratio > 0.2 else "Light rhythm"
     
+    # BGM style detail with confidence (all_scores is a dict)
+    bgm_detail = output.bgm_style_detail or {}
+    bgm_scores = bgm_detail.get('all_scores', {})
+    bgm_sorted = sorted(bgm_scores.items(), key=lambda x: x[1], reverse=True)[:5] if bgm_scores else []
+    bgm_top3 = "\n".join([f"| {label} | **{score:.1%}** |" for label, score in bgm_sorted]) if bgm_sorted else "| N/A | — |"
+    
+    # Mood detail with confidence (all_scores is a dict)
+    mood_detail = output.mood_detail or {}
+    mood_scores = mood_detail.get('all_scores', {})
+    mood_sorted = sorted(mood_scores.items(), key=lambda x: x[1], reverse=True)[:5] if mood_scores else []
+    mood_top3 = "\n".join([f"| {label} | **{score:.1%}** |" for label, score in mood_sorted]) if mood_sorted else "| N/A | — |"
+    
+    # Instruments detail with confidence (instrument_scores is a dict)
+    inst_detail = output.instruments or {}
+    inst_scores = inst_detail.get('instrument_scores', {})
+    inst_sorted = sorted(inst_scores.items(), key=lambda x: x[1], reverse=True)[:5] if inst_scores else []
+    inst_top5 = "\n".join([f"| {label} | **{score:.1%}** |" for label, score in inst_sorted]) if inst_sorted else "| N/A | — |"
+    
     return f"""## 🎵 Audio Analysis Results
 
 ### 💓 Rhythm & Tempo
@@ -502,16 +547,30 @@ def format_audio(output: AudioOutput) -> str:
 | **Beat Count** | {output.num_beats} | Total rhythmic beats detected |
 | **Percussive Ratio** | {output.percussive_ratio:.2f} | {percussive_desc} |
 
-### 🎸 Music Classification (CLAP Model)
+### 🎸 BGM Style Classification (CLAP)
 
-| Metric | Value | Description |
-|:-------|:------|:------------|
-| **BGM Style** | {output.bgm_style} | Genre/style of background music |
-| **Mood** | {output.mood} | Emotional tone of the audio |
-| **Key** | {output.key_signature} | Musical key (if detected) |
+| Style | Confidence |
+|:------|:----------:|
+{bgm_top3}
 
-### 🎹 Instruments Detected
-{inst_str}
+**Dominant**: {output.bgm_style} ({output.bgm_style_confidence:.1%})
+
+### 😊 Mood Analysis (CLAP)
+
+| Mood | Confidence |
+|:-----|:----------:|
+{mood_top3}
+
+**Dominant**: {output.mood} ({output.mood_confidence:.1%})
+
+### 🎹 Instruments Detection (CLAP)
+
+| Instrument | Confidence |
+|:-----------|:----------:|
+{inst_top5}
+
+### 🎼 Musical Key
+**Detected Key**: {output.key_signature}
 
 ---
 *Analysis powered by CLAP (laion/larger_clap_music_and_speech)*
@@ -594,46 +653,71 @@ def format_yolo(output: YOLOOutput) -> str:
     detection = output.detection
     environment = output.environment
     object_counts = detection.get('object_counts', {})
+    avg_confidence = detection.get('avg_confidence', {})
     
+    # Objects with confidence
     objects_str = "\n".join([
-        f"| {obj} | {cnt} |"
+        f"| {obj} | {cnt} | {avg_confidence.get(obj, 0):.1%} |"
         for obj, cnt in sorted(object_counts.items(), key=lambda x: x[1], reverse=True)[:10]
     ])
     
-    # Colors section
+    # Environment confidence
+    env_conf = environment.get('confidence', 0)
+    
+    # Colors section with confidence
     colors_section = ""
     if output.colors:
         colors = output.colors
         if isinstance(colors, dict):
-            dom_colors = colors.get('dominant_colors', colors.get('all_colors', []))
-            if dom_colors and isinstance(dom_colors, list):
-                colors_str = ", ".join(dom_colors[:5]) if dom_colors else "N/A"
+            colors_detail = colors.get('color_detail', [])
+            if colors_detail:
+                colors_str = "\n".join([
+                    f"| {c.get('color', '?')} | {c.get('count', 0)} | {c.get('percentage', 0):.1%} |"
+                    for c in colors_detail[:6]
+                ])
                 colors_section = f"""
 ### 🎨 Object Colors
-**Dominant Colors**: {colors_str}
+
+| Color | Count | Percentage |
+|:------|:-----:|:----------:|
+{colors_str}
 """
+            else:
+                dom_colors = colors.get('dominant_colors', colors.get('all_colors', []))
+                if dom_colors:
+                    colors_section = f"\n### 🎨 Object Colors\n**Dominant**: {', '.join(dom_colors[:5])}\n"
     
-    # Materials section
+    # Materials section with confidence
     materials_section = ""
     if output.materials:
         mats = output.materials
         if isinstance(mats, dict):
-            dom_mats = mats.get('dominant_materials', mats.get('all_materials', []))
-            if dom_mats and isinstance(dom_mats, list):
-                mats_str = ", ".join(dom_mats[:5]) if dom_mats else "N/A"
+            mats_detail = mats.get('material_detail', [])
+            if mats_detail:
+                mats_str = "\n".join([
+                    f"| {m.get('material', '?')} | {m.get('count', 0)} | {m.get('percentage', 0):.1%} |"
+                    for m in mats_detail[:6]
+                ])
                 materials_section = f"""
 ### 🧱 Materials Detected
-**Dominant Materials**: {mats_str}
+
+| Material | Count | Percentage |
+|:---------|:-----:|:----------:|
+{mats_str}
 """
+            else:
+                dom_mats = mats.get('dominant_materials', mats.get('all_materials', []))
+                if dom_mats:
+                    materials_section = f"\n### 🧱 Materials Detected\n**Dominant**: {', '.join(dom_mats[:5])}\n"
     
     return f"""## 🔍 Object Detection Results
 
 ### 🏠 Environment Classification
 
-| Metric | Value | Description |
-|:-------|:------|:------------|
-| **Environment Type** | {environment.get('environment_type', 'N/A')} | Primary scene category |
-| **Activity Style** | {environment.get('cooking_style', 'N/A')} | Detected activity type |
+| Metric | Value | Confidence |
+|:-------|:------|:----------:|
+| **Environment Type** | {environment.get('environment_type', 'N/A')} | {env_conf:.0%} |
+| **Activity Style** | {environment.get('cooking_style', 'N/A')} | — |
 
 ### 📦 Object Detection Statistics
 
@@ -641,11 +725,12 @@ def format_yolo(output: YOLOOutput) -> str:
 |:-------|:-----:|:------------|
 | **Unique Objects** | {detection.get('unique_objects', 0)} | Different object types found |
 | **Total Detections** | {detection.get('total_detections', 0)} | Total instances across frames |
+| **Avg Confidence** | {sum(avg_confidence.values())/max(len(avg_confidence), 1):.1%} | Mean detection confidence |
 
 ### 📋 Detected Objects (Top 10)
 
-| Object | Count |
-|:-------|:-----:|
+| Object | Count | Avg Confidence |
+|:-------|:-----:|:--------------:|
 {objects_str}
 
 {colors_section}
