@@ -1,10 +1,11 @@
-.PHONY: help install install-full clean test run
+.PHONY: help install install-full clean test run web
 
 help:
 	@echo "Video Style Analysis Pipeline - Makefile Commands"
 	@echo ""
 	@echo "  make install       - Install basic dependencies"
 	@echo "  make install-full  - Install all dependencies (including optional)"
+	@echo "  make web           - Launch Gradio Web UI (http://localhost:7860)"
 	@echo "  make run           - Run analysis on videos/ (basic mode)"
 	@echo "  make run-full      - Run analysis with all features enabled"
 	@echo "  make extract-audio - Extract audio from videos to work/"
@@ -17,6 +18,11 @@ install:
 install-full:
 	pip install -r requirements.txt
 	pip install ultralytics faster-whisper scenedetect[opencv]
+
+web:
+	@echo "🌐 Starting Gradio Web UI..."
+	@echo "📍 Open http://localhost:7860 in your browser"
+	python app.py
 
 extract-audio:
 	@mkdir -p work

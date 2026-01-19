@@ -6,16 +6,24 @@ Research-grade pipeline for analyzing video style patterns: cinematography, edit
 
 ## Features / 功能
 
-Analyzes 3 human-created videos to extract common stylistic patterns:
+### SOTA 技术栈 (2025/2026)
 
-分析3个人类创作的视频，提取共同的风格模式：
+| 功能 | 模型 | 说明 |
+|------|------|------|
+| 场景分类 | **CLIP ViT-L/14** | 零样本视觉分类 |
+| 音频分类 | **CLAP (LAION)** | 音频-文本对比学习 |
+| 语音情感 | **HuBERT-large** | 语音表征学习 |
+| 语音识别 | **Whisper large-v3-turbo** | OpenAI 最新 ASR |
+| 目标检测 | **YOLO11** | Ultralytics 最新检测器 |
+
+### 分析维度
 
 - 🎥 **Camera & Composition** / 镜头与构图: angle, movement, framing
 - 🎨 **Color & Lighting** / 色彩与光线: hues, white balance, contrast, CCT
 - ✂️ **Editing & Pacing** / 剪辑与节奏: shot length, transitions, beat alignment
-- 🎵 **Music & Audio** / 音乐与音频: tempo, energy, style, speech ratio
-- 🏠 **Environment** / 环境: scene type, countertop, utensils (optional YOLO)
-- 🗣️ **Narration** / 旁白: speech rate, catchphrases (optional Whisper)
+- 🎵 **Music & Audio** / 音乐与音频: tempo, energy, style, speech ratio (CLAP)
+- 🏠 **Environment** / 环境: scene type, countertop, utensils (YOLO11)
+- 🗣️ **Narration** / 旁白: speech rate, catchphrases, emotion (Whisper + HuBERT)
 
 ## Installation
 
@@ -46,6 +54,25 @@ pip install openai-whisper
 pip install scenedetect[opencv]
 pip install essentia-tensorflow  # For advanced music analysis
 ```
+
+## 🌐 Web UI (Gradio)
+
+**推荐**: 使用 Gradio Web 界面进行交互式分析：
+
+```bash
+# 启动 Web 服务
+python app.py
+
+# 然后访问: http://localhost:7860
+```
+
+**Web UI 功能:**
+- 📤 上传视频文件
+- ▶️ 预览/播放视频和音频
+- 🎯 一键分析或分步执行
+- 📊 实时显示每步结果
+- 📄 生成 PDF/Word 报告
+- 💾 导出 JSON 数据
 
 ## Usage
 
