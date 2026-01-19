@@ -424,6 +424,58 @@ def fmt_conf(value, fmt=".0%"):
     except:
         return "—"
 
+# Label mappings for more readable display
+EMOTION_LABELS = {
+    # HuBERT SUPERB model labels
+    "neu": "😐 Neutral",
+    "hap": "😊 Happy",
+    "ang": "😠 Angry",
+    "sad": "😢 Sad",
+    # Full labels (some models use these)
+    "neutral": "😐 Neutral",
+    "happy": "😊 Happy",
+    "angry": "😠 Angry",
+    "sad": "😢 Sad",
+    "fear": "😨 Fear",
+    "disgust": "🤢 Disgust",
+    "surprise": "😲 Surprise",
+    "calm": "😌 Calm",
+    "excited": "🤩 Excited",
+    # Fallbacks
+    "unknown": "❓ Unknown",
+    "n/a": "—",
+}
+
+PACE_LABELS = {
+    "very_fast": "⚡ Very Fast",
+    "fast": "🏃 Fast",
+    "normal": "🚶 Normal",
+    "slow": "🐢 Slow",
+    "very_slow": "🦥 Very Slow",
+}
+
+PROSODY_LABELS = {
+    "monotone": "📊 Monotone (flat pitch)",
+    "dynamic": "📈 Dynamic (varied pitch)",
+    "expressive": "🎭 Expressive (high variation)",
+    "neutral": "😐 Neutral",
+}
+
+def readable_label(value: str, mapping: dict) -> str:
+    """Convert abbreviated or technical labels to readable format"""
+    if not value:
+        return "—"
+    # Try exact match first
+    lower_val = str(value).lower().strip()
+    if lower_val in mapping:
+        return mapping[lower_val]
+    # Try partial match
+    for key, readable in mapping.items():
+        if key in lower_val or lower_val in key:
+            return readable
+    # Return original with capitalization
+    return value.capitalize() if value else "—"
+
 def format_visual(output: VisualOutput) -> str:
     if not output or not output.success:
         return f"❌ {t('analysis_failed')}"
@@ -635,39 +687,74 @@ def format_asr(output: ASROutput) -> str:
     # WPM interpretation
     wpm = output.words_per_minute
     if wpm > 160:
-        pace_desc = "Very fast (energetic/urgent)"
+        pace_desc = "⚡ Very fast (energetic/urgent)"
     elif wpm > 130:
-        pace_desc = "Fast (conversational+)"
+        pace_desc = "🏃 Fast (conversational+)"
     elif wpm > 100:
-        pace_desc = "Normal conversation"
+        pace_desc = "🚶 Normal conversation"
     elif wpm > 60:
-        pace_desc = "Slow (deliberate/clear)"
+        pace_desc = "🐢 Slow (deliberate/clear)"
     else:
-        pace_desc = "Very slow (emphatic)"
+        pace_desc = "🦥 Very slow (emphatic)"
     
-    # Emotion section
+    # Emotion section with readable labels
     emotion_section = ""
     if output.emotion:
-        emo = output.emotion.get('dominant_emotion', 'N/A')
+        raw_emo = output.emotion.get('dominant_emotion', 'N/A')
+        emo = readable_label(raw_emo, EMOTION_LABELS)
         conf = output.emotion.get('confidence', 0)
-        emotion_section = f"""
+        
+        # Build emotion scores table
+        emotion_scores = output.emotion.get('emotion_scores', {})
+        emotion_rows = ""
+        if emotion_scores:
+            sorted_scores = sorted(emotion_scores.items(), key=lambda x: x[1], reverse=True)
+            for label, score in sorted_scores[:4]:  # Top 4 emotions
+                if score and score > 0.01:  # Only show if > 1%
+                    readable_emo = readable_label(label, EMOTION_LABELS)
+                    emotion_rows += f"| {readable_emo} | {fmt_conf(score, '.1%')} |\n"
+        
+        if emotion_rows:
+            emotion_section = f"""
+### 🎭 Emotion Analysis (HuBERT Model)
+
+**Dominant**: {emo} ({fmt_conf(conf, '.1%')})
+
+| Emotion | Score |
+|:--------|:-----:|
+{emotion_rows}
+"""
+        else:
+            emotion_section = f"""
 ### 🎭 Emotion Analysis (HuBERT Model)
 | Detected Emotion | Confidence |
 |:----------------:|:----------:|
 | **{emo}** | {fmt_conf(conf, '.1%')} |
 """
     
-    # Prosody section
+    # Prosody section with readable labels
     prosody_section = ""
     if output.prosody:
         pitch = output.prosody.get('mean_pitch_hz', 0)
-        style = output.prosody.get('prosody_style', 'N/A')
+        raw_style = output.prosody.get('prosody_style', 'N/A')
+        style = readable_label(raw_style, PROSODY_LABELS) if raw_style != 'N/A' else raw_style
         intensity = output.prosody.get('mean_intensity', 0)
+        
+        # Pitch interpretation
+        if pitch > 250:
+            pitch_desc = "High (possibly female/child)"
+        elif pitch > 150:
+            pitch_desc = "Medium (typical adult)"
+        elif pitch > 0:
+            pitch_desc = "Low (deep voice)"
+        else:
+            pitch_desc = "—"
+        
         prosody_section = f"""
 ### 📊 Prosody Analysis (Librosa)
-| Metric | Value | Description |
-|:-------|:-----:|:------------|
-| **Pitch** | {pitch:.1f} Hz | Average fundamental frequency |
+| Metric | Value | Interpretation |
+|:-------|:-----:|:---------------|
+| **Pitch** | {pitch:.1f} Hz | {pitch_desc} |
 | **Style** | {style} | Speaking manner |
 | **Intensity** | {intensity:.1f} dB | Volume level |
 """
