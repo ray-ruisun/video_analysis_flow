@@ -902,33 +902,39 @@ def upload_video(video_file):
     return status, audio_str, frame_paths, get_video_list_header(), gr.update(choices=choices, value=idx)
 
 
-def add_more_video(video_file):
-    """Add another video to the list via the Add Video file input"""
-    if video_file is None:
+def add_more_videos(video_files):
+    """Add multiple videos to the list"""
+    if video_files is None or len(video_files) == 0:
         return get_video_list_header(), gr.update()
     
     import shutil
-    video_path = Path(video_file)
+    
+    # Handle single file or list of files
+    if not isinstance(video_files, list):
+        video_files = [video_files]
     
     # Create main work directory if not exists
     if STATE.work_dir is None:
         STATE.work_dir = Path(tempfile.mkdtemp(prefix="video_analysis_"))
     
-    # Create unique subdirectory for this video
-    video_idx = len(STATE.videos)
-    video_work_dir = STATE.work_dir / f"video_{video_idx}"
-    video_work_dir.mkdir(exist_ok=True)
-    
-    # Copy video to work directory
-    dest_path = video_work_dir / video_path.name
-    shutil.copy(video_file, dest_path)
-    
-    # Add to video list
-    idx = STATE.add_video(dest_path, video_work_dir)
-    
-    # Extract audio
-    audio_path = extract_audio_from_video(dest_path, video_work_dir)
-    STATE.videos[idx].audio_path = audio_path
+    for video_file in video_files:
+        video_path = Path(video_file)
+        
+        # Create unique subdirectory for this video
+        video_idx = len(STATE.videos)
+        video_work_dir = STATE.work_dir / f"video_{video_idx}"
+        video_work_dir.mkdir(exist_ok=True)
+        
+        # Copy video to work directory
+        dest_path = video_work_dir / video_path.name
+        shutil.copy(video_file, dest_path)
+        
+        # Add to video list
+        idx = STATE.add_video(dest_path, video_work_dir)
+        
+        # Extract audio
+        audio_path = extract_audio_from_video(dest_path, video_work_dir)
+        STATE.videos[idx].audio_path = audio_path
     
     # Don't change current selection - user can switch manually
     choices = get_video_list_choices()
@@ -940,20 +946,21 @@ def add_more_video(video_file):
 def clear_all_videos():
     """Clear all videos"""
     STATE.reset()
-    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
+    # Return: video_list_header, video_list_radio, upload_status, audio_player, frame_gallery, video_input
+    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], None
 
 
 def select_video_from_list(index):
     """Select a video from the radio list (index is passed directly)"""
     if index is None or not STATE.videos:
-        return t('no_videos'), None, []
+        return t('no_videos'), None, [], None
     
     # Convert to int if needed
     if isinstance(index, str):
         try:
             index = int(index)
         except:
-            return t('no_videos'), None, []
+            return t('no_videos'), None, [], None
     
     if 0 <= index < len(STATE.videos):
         STATE.current_index = index
@@ -965,11 +972,12 @@ def select_video_from_list(index):
             num_frames = STATE.config.ui.gallery_frames
             frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames)
             audio_path = str(video.audio_path) if video.audio_path else None
+            video_path_str = str(video.video_path)
             
             status = f"📹 {t('video_n').format(n=index+1)}: {video.video_path.name}"
-            return status, audio_path, frame_paths
+            return status, audio_path, frame_paths, video_path_str
     
-    return t('no_videos'), None, []
+    return t('no_videos'), None, [], None
 
 
 def load_video_results(index):
@@ -1007,7 +1015,7 @@ def load_video_results(index):
 def delete_current_video():
     """Delete the currently selected video"""
     if not STATE.videos:
-        return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
+        return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], None
     
     idx = STATE.current_index
     if 0 <= idx < len(STATE.videos):
@@ -1024,15 +1032,16 @@ def delete_current_video():
             num_frames = STATE.config.ui.gallery_frames
             frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames) if video.video_path else []
             audio_path = str(video.audio_path) if video.audio_path else None
+            video_path_str = str(video.video_path) if video.video_path else None
             status = f"📹 {t('video_n').format(n=STATE.current_index+1)}: {video.video_path.name if video.video_path else 'N/A'}"
             choices = get_video_list_choices()
-            return get_video_list_header(), gr.update(choices=choices, value=STATE.current_index), status, audio_path, frame_paths
+            return get_video_list_header(), gr.update(choices=choices, value=STATE.current_index), status, audio_path, frame_paths, video_path_str
         else:
             STATE.video_path = None
             STATE.audio_path = None
-            return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
+            return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], None
     
-    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
+    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], None
 
 
 
@@ -1558,7 +1567,27 @@ def switch_language(lang: str):
 def create_ui():
     cfg = STATE.config
     
-    with gr.Blocks(title="Video Style Analysis") as demo:
+    # Custom CSS for orange highlight on selected video
+    custom_css = """
+    .video-list-radio input[type="radio"]:checked + label {
+        background-color: #ff9800 !important;
+        border-color: #ff9800 !important;
+        color: white !important;
+    }
+    .video-list-radio label {
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin: 4px 0;
+        border: 2px solid #e0e0e0;
+        transition: all 0.2s;
+    }
+    .video-list-radio label:hover {
+        border-color: #ff9800;
+        background-color: #fff3e0;
+    }
+    """
+    
+    with gr.Blocks(title="Video Style Analysis", css=custom_css) as demo:
         
         # Header
         header_md = gr.Markdown(f"# {t('title')}\n**{t('subtitle')}** | {t('models')}")
@@ -1600,13 +1629,15 @@ def create_ui():
                             value=STATE.current_index if STATE.videos else None,
                             label=None,
                             interactive=True,
-                            container=False
+                            container=False,
+                            elem_classes=["video-list-radio"]
                         )
                         
                         with gr.Row():
                             add_video_btn = gr.UploadButton(
-                                t('add_video'), 
+                                "➕ Add More Videos", 
                                 file_types=["video"],
+                                file_count="multiple",
                                 size="sm",
                                 scale=2
                             )
@@ -1683,7 +1714,8 @@ def create_ui():
                     value=STATE.current_index if STATE.videos else None,
                     label=None,
                     interactive=True,
-                    container=False
+                    container=False,
+                    elem_classes=["video-list-radio"]
                 )
                 
                 gr.Markdown("---")
@@ -1904,21 +1936,21 @@ def create_ui():
         video_input.change(fn=upload_video, inputs=[video_input],
                           outputs=[upload_status, audio_player, frame_gallery, video_list_header, video_list_radio])
         
-        add_video_btn.upload(fn=add_more_video, inputs=[add_video_btn],
+        add_video_btn.upload(fn=add_more_videos, inputs=[add_video_btn],
                             outputs=[video_list_header, video_list_radio])
         
         video_list_radio.change(fn=select_video_from_list, inputs=[video_list_radio],
-                               outputs=[upload_status, audio_player, frame_gallery])
+                               outputs=[upload_status, audio_player, frame_gallery, video_input])
         
         # Sync video selection between Upload tab and Analysis tab
         results_video_selector.change(fn=load_video_results, inputs=[results_video_selector],
                                      outputs=[visual_result, contact_img, audio_result, asr_result, yolo_result, ai_result])
         
         delete_video_btn.click(fn=delete_current_video, inputs=[],
-                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery])
+                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery, video_input])
         
         clear_videos_btn.click(fn=clear_all_videos, inputs=[],
-                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery])
+                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery, video_input])
         
         run_visual_btn.click(fn=run_visual, outputs=[visual_result, contact_img])
         run_audio_btn.click(fn=run_audio, outputs=[audio_result])
