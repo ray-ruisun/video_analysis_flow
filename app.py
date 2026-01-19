@@ -413,23 +413,40 @@ def format_visual(output: VisualOutput) -> str:
     if not output or not output.success:
         return f"❌ {t('analysis_failed')}"
     
-    # Scene categories with confidence
+    # Scene categories with confidence (safe handling)
+    scene_cats = output.scene_categories if isinstance(output.scene_categories, list) else []
     scenes = "\n".join([
-        f"| {s.get('label', '?')} | **{s.get('probability', 0):.1%}** |"
-        for s in output.scene_categories[:5]
-    ])
+        f"| {s.get('label', '?') if isinstance(s, dict) else s} | **{s.get('probability', 0):.1%}** |" if isinstance(s, dict) else f"| {s} | — |"
+        for s in scene_cats[:5]
+    ]) if scene_cats else "| N/A | — |"
     
-    # Helper to format distribution (handles both dict and list)
+    # Helper to format distribution (handles dict, list, and edge cases)
     def format_dist(detail, key='distribution'):
-        dist = detail.get(key, {}) if detail else {}
-        conf = detail.get('confidence', 0) if detail else 0
-        if isinstance(dist, dict) and dist:
-            sorted_items = sorted(dist.items(), key=lambda x: x[1], reverse=True)[:3]
-            dist_str = " | ".join([f"{k}: {v:.0%}" for k, v in sorted_items])
-        elif isinstance(dist, list) and dist:
-            # List of dicts like [{'label': 'x', 'count': 10, 'percentage': 0.5}, ...]
-            dist_str = " | ".join([f"{d.get('label', d.get('name', '?'))}: {d.get('percentage', d.get('count', 0)):.0%}" for d in dist[:3]])
-        else:
+        if not detail:
+            return 0, "N/A"
+        dist = detail.get(key, {})
+        conf = detail.get('confidence', 0)
+        try:
+            if isinstance(dist, dict) and dist:
+                sorted_items = sorted(dist.items(), key=lambda x: x[1] if isinstance(x[1], (int, float)) else 0, reverse=True)[:3]
+                dist_str = " | ".join([f"{k}: {v:.0%}" if isinstance(v, (int, float)) else f"{k}: {v}" for k, v in sorted_items])
+            elif isinstance(dist, list) and dist:
+                # List of dicts like [{'label': 'x', 'count': 10, 'percentage': 0.5}, ...]
+                parts = []
+                for d in dist[:3]:
+                    if isinstance(d, dict):
+                        label = d.get('label', d.get('name', d.get('value', '?')))
+                        pct = d.get('percentage', d.get('count', 0))
+                        if isinstance(pct, (int, float)):
+                            parts.append(f"{label}: {pct:.0%}")
+                        else:
+                            parts.append(f"{label}: {pct}")
+                    else:
+                        parts.append(str(d))
+                dist_str = " | ".join(parts) if parts else "N/A"
+            else:
+                dist_str = "N/A"
+        except Exception:
             dist_str = "N/A"
         return conf, dist_str
     
@@ -670,15 +687,34 @@ def format_yolo(output: YOLOOutput) -> str:
     # Environment confidence
     env_conf = environment.get('confidence', 0)
     
+    # Helper to safely join items (handles list, dict, or other types)
+    def safe_join_items(items, max_items=5):
+        if not items:
+            return "N/A"
+        if isinstance(items, dict):
+            # Dict like {'red': 10, 'blue': 5}
+            sorted_items = sorted(items.items(), key=lambda x: x[1] if isinstance(x[1], (int, float)) else 0, reverse=True)
+            return ", ".join([str(k) for k, v in sorted_items[:max_items]])
+        elif isinstance(items, list):
+            result = []
+            for item in items[:max_items]:
+                if isinstance(item, dict):
+                    result.append(str(item.get('color', item.get('material', item.get('name', item.get('label', '?'))))))
+                else:
+                    result.append(str(item))
+            return ", ".join(result)
+        else:
+            return str(items)
+    
     # Colors section with confidence
     colors_section = ""
     if output.colors:
         colors = output.colors
         if isinstance(colors, dict):
             colors_detail = colors.get('color_detail', [])
-            if colors_detail:
+            if colors_detail and isinstance(colors_detail, list):
                 colors_str = "\n".join([
-                    f"| {c.get('color', '?')} | {c.get('count', 0)} | {c.get('percentage', 0):.1%} |"
+                    f"| {c.get('color', '?') if isinstance(c, dict) else c} | {c.get('count', 0) if isinstance(c, dict) else '-'} | {c.get('percentage', 0):.1%} |" if isinstance(c, dict) else f"| {c} | - | - |"
                     for c in colors_detail[:6]
                 ])
                 colors_section = f"""
@@ -691,7 +727,7 @@ def format_yolo(output: YOLOOutput) -> str:
             else:
                 dom_colors = colors.get('dominant_colors', colors.get('all_colors', []))
                 if dom_colors:
-                    colors_section = f"\n### 🎨 Object Colors\n**Dominant**: {', '.join(dom_colors[:5])}\n"
+                    colors_section = f"\n### 🎨 Object Colors\n**Dominant**: {safe_join_items(dom_colors)}\n"
     
     # Materials section with confidence
     materials_section = ""
@@ -699,9 +735,9 @@ def format_yolo(output: YOLOOutput) -> str:
         mats = output.materials
         if isinstance(mats, dict):
             mats_detail = mats.get('material_detail', [])
-            if mats_detail:
+            if mats_detail and isinstance(mats_detail, list):
                 mats_str = "\n".join([
-                    f"| {m.get('material', '?')} | {m.get('count', 0)} | {m.get('percentage', 0):.1%} |"
+                    f"| {m.get('material', '?') if isinstance(m, dict) else m} | {m.get('count', 0) if isinstance(m, dict) else '-'} | {m.get('percentage', 0):.1%} |" if isinstance(m, dict) else f"| {m} | - | - |"
                     for m in mats_detail[:6]
                 ])
                 materials_section = f"""
@@ -714,7 +750,7 @@ def format_yolo(output: YOLOOutput) -> str:
             else:
                 dom_mats = mats.get('dominant_materials', mats.get('all_materials', []))
                 if dom_mats:
-                    materials_section = f"\n### 🧱 Materials Detected\n**Dominant**: {', '.join(dom_mats[:5])}\n"
+                    materials_section = f"\n### 🧱 Materials Detected\n**Dominant**: {safe_join_items(dom_mats)}\n"
     
     return f"""## 🔍 Object Detection Results
 
