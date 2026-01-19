@@ -73,6 +73,7 @@ TRANSLATIONS = {
         "video_list": "Video List",
         "add_video": "➕ Add Video",
         "clear_all": "🗑️ Clear All",
+        "delete_video": "🗑️ Delete",
         "single_video_mode": "Single Video Analysis",
         "multi_video_mode": "Cross-Video Comparison ({n} videos)",
         "no_videos": "No videos added",
@@ -172,6 +173,7 @@ TRANSLATIONS = {
         "video_list": "视频列表",
         "add_video": "➕ 添加视频",
         "clear_all": "🗑️ 清空全部",
+        "delete_video": "🗑️ 删除",
         "single_video_mode": "单视频分析",
         "multi_video_mode": "跨视频对比 ({n} 个视频)",
         "no_videos": "未添加视频",
@@ -852,78 +854,95 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
 # Processing Functions
 # =============================================================================
 def upload_video(video_file):
-    """Upload a single video (resets state for single-video mode)"""
+    """Upload and add a video to the list (doesn't reset existing videos)"""
     if video_file is None:
         return t('upload_first'), None, [], get_video_list_html()
     
-    STATE.reset()
-    STATE.work_dir = Path(tempfile.mkdtemp(prefix="video_analysis_"))
-    
-    video_path = Path(video_file)
-    STATE.video_path = STATE.work_dir / video_path.name
-    
     import shutil
-    shutil.copy(video_file, STATE.video_path)
-    
-    # Also add to multi-video list
-    STATE.add_video(STATE.video_path, STATE.work_dir)
-    STATE.videos[0].audio_path = extract_audio_from_video(STATE.video_path, STATE.work_dir)
-    STATE.audio_path = STATE.videos[0].audio_path
-    
-    num_frames = STATE.config.ui.gallery_frames
-    frame_paths = extract_frames_for_gallery(STATE.video_path, STATE.work_dir, num_frames)
-    
-    status = f"{t('uploaded')}: {video_path.name}\n"
-    status += f"{t('workdir')}: {STATE.work_dir}\n"
-    status += t('frames_extracted').format(n=len(frame_paths)) + "\n"
-    status += t('audio_extracted') if STATE.audio_path else t('audio_failed')
-    
-    audio_path = str(STATE.audio_path) if STATE.audio_path else None
-    return status, audio_path, frame_paths, get_video_list_html()
-
-
-def add_video(video_file):
-    """Add an additional video for multi-video comparison"""
-    if video_file is None:
-        return get_video_list_html()
-    
     video_path = Path(video_file)
     
-    # Create work directory if not exists
+    # Create main work directory if not exists
     if STATE.work_dir is None:
         STATE.work_dir = Path(tempfile.mkdtemp(prefix="video_analysis_"))
     
     # Create unique subdirectory for this video
-    video_work_dir = STATE.work_dir / f"video_{len(STATE.videos)}"
+    video_idx = len(STATE.videos)
+    video_work_dir = STATE.work_dir / f"video_{video_idx}"
     video_work_dir.mkdir(exist_ok=True)
     
-    # Copy video
+    # Copy video to work directory
     dest_path = video_work_dir / video_path.name
-    import shutil
     shutil.copy(video_file, dest_path)
     
     # Add to video list
     idx = STATE.add_video(dest_path, video_work_dir)
     
     # Extract audio
-    STATE.videos[idx].audio_path = extract_audio_from_video(dest_path, video_work_dir)
+    audio_path = extract_audio_from_video(dest_path, video_work_dir)
+    STATE.videos[idx].audio_path = audio_path
     
-    # If this is the first video, set legacy state
-    if len(STATE.videos) == 1:
-        STATE.video_path = dest_path
-        STATE.audio_path = STATE.videos[0].audio_path
+    # Set as current video
+    STATE.current_index = idx
+    STATE.sync_current_to_legacy()
     
-    return get_video_list_html()
+    # Extract frames for gallery
+    num_frames = STATE.config.ui.gallery_frames
+    frame_paths = extract_frames_for_gallery(dest_path, video_work_dir, num_frames)
+    
+    status = f"✅ {t('uploaded')}: {video_path.name}\n"
+    status += f"📁 {t('video_n').format(n=idx+1)} of {len(STATE.videos)}\n"
+    status += t('frames_extracted').format(n=len(frame_paths)) + "\n"
+    status += t('audio_extracted') if audio_path else t('audio_failed')
+    
+    audio_str = str(audio_path) if audio_path else None
+    return status, audio_str, frame_paths, get_video_list_html()
+
+
+def delete_video(index: int):
+    """Delete a video from the list"""
+    if 0 <= index < len(STATE.videos):
+        STATE.videos.pop(index)
+        
+        # Adjust current index if needed
+        if STATE.current_index >= len(STATE.videos):
+            STATE.current_index = max(0, len(STATE.videos) - 1)
+        
+        # Sync to legacy state
+        if STATE.videos:
+            STATE.sync_current_to_legacy()
+        else:
+            STATE.video_path = None
+            STATE.audio_path = None
+    
+    # Return updated UI
+    if STATE.videos and STATE.current_index < len(STATE.videos):
+        video = STATE.videos[STATE.current_index]
+        num_frames = STATE.config.ui.gallery_frames
+        frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames) if video.video_path else []
+        audio_path = str(video.audio_path) if video.audio_path else None
+        status = f"📹 {t('video_n').format(n=STATE.current_index+1)}: {video.video_path.name if video.video_path else 'N/A'}"
+        return get_video_list_html(), status, audio_path, frame_paths
+    else:
+        return get_video_list_html(), t('no_videos'), None, []
 
 
 def clear_all_videos():
     """Clear all videos"""
     STATE.reset()
-    return get_video_list_html(), t('upload_first'), None, []
+    return get_video_list_html(), t('no_videos'), None, [], get_video_choices()
 
 
-def select_video(index: int):
-    """Select a video from the list to view/analyze"""
+def select_video_by_choice(choice: str):
+    """Select a video from dropdown choice"""
+    if not choice or not STATE.videos:
+        return t('no_videos'), None, []
+    
+    # Parse index from choice (e.g., "1. video.mp4" -> 0)
+    try:
+        index = int(choice.split(".")[0]) - 1
+    except:
+        return t('no_videos'), None, []
+    
     if 0 <= index < len(STATE.videos):
         STATE.current_index = index
         STATE.sync_current_to_legacy()
@@ -939,6 +958,58 @@ def select_video(index: int):
             return status, audio_path, frame_paths
     
     return t('no_videos'), None, []
+
+
+def delete_current_video():
+    """Delete the currently selected video"""
+    if not STATE.videos:
+        return get_video_list_html(), t('no_videos'), None, [], get_video_choices()
+    
+    idx = STATE.current_index
+    if 0 <= idx < len(STATE.videos):
+        STATE.videos.pop(idx)
+        
+        # Adjust current index
+        if STATE.current_index >= len(STATE.videos):
+            STATE.current_index = max(0, len(STATE.videos) - 1)
+        
+        # Sync to legacy state
+        if STATE.videos:
+            STATE.sync_current_to_legacy()
+            video = STATE.videos[STATE.current_index]
+            num_frames = STATE.config.ui.gallery_frames
+            frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames) if video.video_path else []
+            audio_path = str(video.audio_path) if video.audio_path else None
+            status = f"📹 {t('video_n').format(n=STATE.current_index+1)}: {video.video_path.name if video.video_path else 'N/A'}"
+            return get_video_list_html(), status, audio_path, frame_paths, get_video_choices()
+        else:
+            STATE.video_path = None
+            STATE.audio_path = None
+            return get_video_list_html(), t('no_videos'), None, [], get_video_choices()
+    
+    return get_video_list_html(), t('no_videos'), None, [], get_video_choices()
+
+
+def get_video_choices() -> List[str]:
+    """Get list of video choices for dropdown"""
+    if not STATE.videos:
+        return []
+    
+    choices = []
+    for i, video in enumerate(STATE.videos):
+        name = video.video_path.name if video.video_path else f"Video {i+1}"
+        # Add status indicators
+        status = []
+        if video.visual_output:
+            status.append("✓V")
+        if video.audio_output:
+            status.append("✓A")
+        if video.yolo_output:
+            status.append("✓Y")
+        status_str = f" [{' '.join(status)}]" if status else ""
+        choices.append(f"{i+1}. {name}{status_str}")
+    
+    return choices
 
 
 def get_video_list_html() -> str:
@@ -964,14 +1035,15 @@ def get_video_list_html() -> str:
         if video.ai_output:
             status_icons.append("🤖")
         
-        status_str = " ".join(status_icons) if status_icons else "⏳"
+        status_str = " ".join(status_icons) if status_icons else "⏳ Pending"
         
         bg_color = "#e3f2fd" if is_current else "#f5f5f5"
         border = "2px solid #2196f3" if is_current else "1px solid #ddd"
+        current_marker = "▶ " if is_current else ""
         
         items.append(f"""
-        <div style='padding:10px;margin:5px 0;background:{bg_color};border:{border};border-radius:8px;'>
-            <strong>{t('video_n').format(n=i+1)}</strong>: {name}<br/>
+        <div style='padding:10px;margin:5px 0;background:{bg_color};border:{border};border-radius:8px;cursor:pointer;'>
+            <strong>{current_marker}{t('video_n').format(n=i+1)}</strong>: {name}<br/>
             <small style='color:#666;'>Status: {status_str}</small>
         </div>
         """)
@@ -983,7 +1055,9 @@ def get_video_list_html() -> str:
         header += f"📈 {t('multi_video_mode').format(n=len(STATE.videos))}"
     header += "</div>"
     
-    return header + "".join(items)
+    hint = "<div style='font-size:12px;color:#666;margin-top:8px;'>💡 Use dropdown below to switch videos</div>"
+    
+    return header + "".join(items) + hint
 
 
 # Internal analysis functions (no progress tracking)
@@ -1139,7 +1213,7 @@ def run_ai_detection(progress=gr.Progress()):
 def run_batch_analysis(language: str, progress=gr.Progress()):
     """Analyze all videos in the list for cross-video comparison"""
     if not STATE.videos:
-        return (f"❌ {t('no_videos')}", None, "", "", "", "", "", "", get_video_list_html())
+        return (f"❌ {t('no_videos')}", None, "", "", "", "", "", "", get_video_list_html(), get_video_choices())
     
     total_videos = len(STATE.videos)
     results = []
@@ -1192,7 +1266,7 @@ def run_batch_analysis(language: str, progress=gr.Progress()):
     contact = STATE.visual_output.contact_sheet if STATE.visual_output else None
     
     return (visual_result, contact, audio_result, asr_result, yolo_result, 
-            ai_result, consensus_result, summary, get_video_list_html())
+            ai_result, consensus_result, summary, get_video_list_html(), get_video_choices())
 
 
 def run_consensus():
@@ -1277,8 +1351,9 @@ def run_all(language: str, progress=gr.Progress()):
     
     summary = "\n".join(lines)
     video_list = get_video_list_html()
+    video_choices = get_video_choices()
     
-    return visual_result, contact, audio_result, asr_result, yolo_result, ai_result, consensus_result, summary, video_list
+    return visual_result, contact, audio_result, asr_result, yolo_result, ai_result, consensus_result, summary, video_list, video_choices
 
 
 def gen_report(progress=gr.Progress()):
@@ -1481,14 +1556,10 @@ def create_ui():
                         gr.Markdown("*Supports MP4, AVI, MOV, MKV. Upload single or multiple videos.*")
                         
                         video_input = gr.Video(
-                            label="Select Video File",
+                            label="📤 Upload Video (click to add more)",
                             height=280,
                             elem_classes=["video-preview"]
                         )
-                        
-                        with gr.Row():
-                            add_video_btn = gr.Button(t('add_video'), size="sm", scale=1)
-                            clear_videos_btn = gr.Button(t('clear_all'), size="sm", variant="secondary", scale=1)
                         
                         upload_status = gr.Textbox(
                             label="Upload Status",
@@ -1503,11 +1574,15 @@ def create_ui():
                             label="Video List"
                         )
                         
-                        video_selector = gr.Slider(
-                            minimum=1, maximum=10, step=1, value=1,
-                            label=t('select_video'),
-                            visible=False  # Hidden until multiple videos
-                        )
+                        with gr.Row():
+                            video_selector = gr.Dropdown(
+                                choices=get_video_choices(),
+                                label=t('select_video'),
+                                interactive=True,
+                                scale=3
+                            )
+                            delete_video_btn = gr.Button("🗑️", size="sm", variant="secondary", scale=1)
+                            clear_videos_btn = gr.Button(t('clear_all'), size="sm", variant="stop", scale=1)
                         
                         gr.Markdown("### ⚙️ Analysis Settings")
                         language_select = gr.Dropdown(
@@ -1786,16 +1861,18 @@ def create_ui():
         
         # ========== Event Handlers ==========
         video_input.change(fn=upload_video, inputs=[video_input],
-                          outputs=[upload_status, audio_player, frame_gallery, video_list_html])
+                          outputs=[upload_status, audio_player, frame_gallery, video_list_html]).then(
+            fn=get_video_choices, inputs=[], outputs=[video_selector]
+        )
         
-        add_video_btn.click(fn=add_video, inputs=[video_input],
-                           outputs=[video_list_html])
+        video_selector.change(fn=select_video_by_choice, inputs=[video_selector],
+                             outputs=[upload_status, audio_player, frame_gallery])
+        
+        delete_video_btn.click(fn=delete_current_video, inputs=[],
+                              outputs=[video_list_html, upload_status, audio_player, frame_gallery, video_selector])
         
         clear_videos_btn.click(fn=clear_all_videos, inputs=[],
-                              outputs=[video_list_html, upload_status, audio_player, frame_gallery])
-        
-        video_selector.change(fn=lambda x: select_video(int(x)-1), inputs=[video_selector],
-                             outputs=[upload_status, audio_player, frame_gallery])
+                              outputs=[video_list_html, upload_status, audio_player, frame_gallery, video_selector])
         
         run_visual_btn.click(fn=run_visual, outputs=[visual_result, contact_img])
         run_audio_btn.click(fn=run_audio, outputs=[audio_result])
@@ -1808,14 +1885,14 @@ def create_ui():
             fn=run_all,
             inputs=[language_select],
             outputs=[visual_result, contact_img, audio_result, asr_result,
-                     yolo_result, ai_result, consensus_result, summary_box, video_list_html]
+                     yolo_result, ai_result, consensus_result, summary_box, video_list_html, video_selector]
         )
         
         run_batch_btn.click(
             fn=run_batch_analysis,
             inputs=[language_select],
             outputs=[visual_result, contact_img, audio_result, asr_result,
-                     yolo_result, ai_result, consensus_result, summary_box, video_list_html]
+                     yolo_result, ai_result, consensus_result, summary_box, video_list_html, video_selector]
         )
         
         gen_report_btn.click(fn=gen_report, outputs=[report_status, report_file, pdf_file, pdf_preview])
