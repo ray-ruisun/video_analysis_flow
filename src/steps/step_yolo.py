@@ -35,13 +35,15 @@ class YOLOInput(StepInput):
         frames: 可选的预采样帧列表 (如果提供则直接使用)
         target_frames: 目标采样帧数 (默认 36)
         model_name: YOLO 模型名称
+        confidence_threshold: 检测置信度阈值
         enable_colors: 是否启用颜色分析
         enable_materials: 是否启用材质分析
     """
     video_path: Optional[Path] = None
     frames: Optional[List[np.ndarray]] = field(default=None, repr=False)
     target_frames: int = 36
-    model_name: str = "yolov8n.pt"
+    model_name: str = "yolo11s.pt"
+    confidence_threshold: float = 0.25
     enable_colors: bool = True
     enable_materials: bool = True
     
@@ -118,7 +120,8 @@ class YOLOAnalysisStep(PipelineStep[YOLOInput, YOLOOutput]):
                 frames,
                 model_name=input_data.model_name,
                 enable_colors=input_data.enable_colors,
-                enable_materials=input_data.enable_materials
+                enable_materials=input_data.enable_materials,
+                confidence_threshold=input_data.confidence_threshold
             )
             
             # 转换为结构化输出

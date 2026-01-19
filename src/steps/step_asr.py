@@ -33,13 +33,15 @@ class ASRInput(StepInput):
     Attributes:
         audio_path: 音频文件路径
         language: 语言代码 (默认 "en")
-        model_size: Whisper 模型大小 ("tiny", "base", "small", "medium", "large")
+        model_size: Whisper 模型大小 ("tiny", "base", "small", "medium", "large", "large-v3-turbo")
+        beam_size: Whisper beam search 大小
         enable_prosody: 是否启用韵律分析 (使用 librosa)
         enable_emotion: 是否启用情感分析 (使用 HuggingFace)
     """
     audio_path: Path
     language: str = "en"
-    model_size: str = "small"
+    model_size: str = "large-v3-turbo"
+    beam_size: int = 5
     enable_prosody: bool = True
     enable_emotion: bool = True
     

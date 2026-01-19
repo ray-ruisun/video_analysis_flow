@@ -47,11 +47,15 @@ class VideoInput(StepInput):
         audio_path: 可选的音频文件路径（用于音频分析）
         work_dir: 工作目录，用于存放中间文件
         frame_mode: 截图模式 ("edge", "mosaic", "off")
+        target_frames: 目标采样帧数
+        scene_threshold: 场景检测阈值
     """
     video_path: Path
     audio_path: Optional[Path] = None
     work_dir: Path = field(default_factory=lambda: Path("work"))
     frame_mode: str = "edge"
+    target_frames: int = 50
+    scene_threshold: float = 27.0
     
     def __post_init__(self):
         """验证并转换路径类型"""

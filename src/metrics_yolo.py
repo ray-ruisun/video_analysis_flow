@@ -550,16 +550,18 @@ def hue_to_color_name(hue):
         return "Purple/Magenta"
 
 
-def extract_full_yolo_metrics(frames, model_name="yolov8n.pt", 
-                              enable_colors=True, enable_materials=True):
+def extract_full_yolo_metrics(frames, model_name="yolo11s.pt", 
+                              enable_colors=True, enable_materials=True,
+                              confidence_threshold=0.25):
     """
     Extract comprehensive YOLO-based metrics.
     
     Args:
         frames: List of video frames
-        model_name: YOLOv8 model name
+        model_name: YOLO model name (e.g., yolo11s.pt)
         enable_colors: Enable color analysis
         enable_materials: Enable material analysis
+        confidence_threshold: Detection confidence threshold
         
     Returns:
         dict: Complete object detection analysis

@@ -144,11 +144,23 @@ class AIDetectionConfig:
     use_clip: bool = True
     clip_model: str = "openai/clip-vit-large-patch14"
     
-    # Temporal Analysis (Motion Inconsistency)
-    # WARNING: Not very accurate, disabled by default
-    # May produce false positives on videos with fast motion
-    use_temporal: bool = False  # Disabled by default - not reliable
-    temporal_frames: int = 30
+    # Temporal Analysis (CLIP-based Consistency)
+    # Uses CLIP embeddings to detect semantic inconsistencies between frames
+    # More reliable than optical flow - understands content, not just pixels
+    use_temporal: bool = True
+    temporal_frames: int = 16
+    
+    # AIGC Detection (AI-Generated Content)
+    # Model: umm-maybe/AI-image-detector
+    # Detects: Stable Diffusion, DALL-E, Midjourney, etc.
+    use_aigc: bool = True
+    aigc_model: str = "umm-maybe/AI-image-detector"
+    
+    # Audio Deepfake Detection
+    # Model: MelodyMachine/Deepfake-audio-detection
+    # Detects: Voice cloning, TTS synthesis, voice conversion
+    use_audio_deepfake: bool = True
+    audio_deepfake_model: str = "MelodyMachine/Deepfake-audio-detection"
     
     # Face Detection (No-Face Video Analysis)
     use_face_detection: bool = True
@@ -162,11 +174,13 @@ class AIDetectionConfig:
     # Thresholds
     fake_threshold: float = 0.5
     
-    # Ensemble weights (adjusted - temporal disabled)
-    deepfake_weight: float = 0.5   # ViT-based deepfake specialist (primary)
-    clip_weight: float = 0.4       # Zero-shot synthetic detection
-    temporal_weight: float = 0.0   # Disabled - not reliable
-    face_weight: float = 0.1       # No-face analysis
+    # Ensemble weights (total = 1.0)
+    deepfake_weight: float = 0.30   # ViT-based deepfake
+    clip_weight: float = 0.20       # Zero-shot synthetic
+    temporal_weight: float = 0.15   # CLIP-based temporal
+    aigc_weight: float = 0.20       # AIGC detection
+    audio_deepfake_weight: float = 0.10  # Audio deepfake
+    face_weight: float = 0.05       # No-face analysis
 
 
 @dataclass 

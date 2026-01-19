@@ -45,6 +45,14 @@ class AIDetectionResult:
     temporal_score: float = 0.0
     temporal_anomalies: int = 0
     
+    # AIGC detection (AI-generated content)
+    aigc_score: float = 0.0
+    aigc_available: bool = False
+    
+    # Audio deepfake detection
+    audio_deepfake_score: float = 0.0
+    audio_deepfake_available: bool = False
+    
     # Face analysis
     faces_detected: int = 0
     frames_with_faces: int = 0
@@ -69,6 +77,10 @@ class AIDetectionResult:
             "clip_available": self.clip_available,
             "temporal_score": self.temporal_score,
             "temporal_anomalies": self.temporal_anomalies,
+            "aigc_score": self.aigc_score,
+            "aigc_available": self.aigc_available,
+            "audio_deepfake_score": self.audio_deepfake_score,
+            "audio_deepfake_available": self.audio_deepfake_available,
             "faces_detected": self.faces_detected,
             "frames_with_faces": self.frames_with_faces,
             "frames_analyzed": self.frames_analyzed,
@@ -168,6 +180,58 @@ def _load_face_cascade():
         cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         _MODELS["face_cascade"] = cv2.CascadeClassifier(cascade_path)
     return _MODELS["face_cascade"]
+
+
+def _load_aigc_detector():
+    """Load AIGC (AI-Generated Content) image detector
+    
+    Model: umm-maybe/AI-image-detector
+    Detects AI-generated images (Stable Diffusion, DALL-E, Midjourney, etc.)
+    """
+    if "aigc" not in _MODELS:
+        try:
+            from transformers import pipeline
+            import torch
+            
+            model_name = "umm-maybe/AI-image-detector"
+            logger.info(f"Loading AIGC detector: {model_name}")
+            
+            device = 0 if _check_cuda() else -1
+            pipe = pipeline("image-classification", model=model_name, device=device)
+            
+            _MODELS["aigc"] = {"pipeline": pipe}
+            logger.info("AIGC detector loaded successfully")
+        except Exception as e:
+            logger.warning(f"Failed to load AIGC detector: {e}")
+            _MODELS["aigc"] = None
+    
+    return _MODELS.get("aigc")
+
+
+def _load_audio_deepfake_detector():
+    """Load audio deepfake detector
+    
+    Model: MelodyMachine/Deepfake-audio-detection
+    Detects synthetic/cloned voice audio
+    """
+    if "audio_deepfake" not in _MODELS:
+        try:
+            from transformers import pipeline
+            import torch
+            
+            model_name = "MelodyMachine/Deepfake-audio-detection"
+            logger.info(f"Loading audio deepfake detector: {model_name}")
+            
+            device = 0 if _check_cuda() else -1
+            pipe = pipeline("audio-classification", model=model_name, device=device)
+            
+            _MODELS["audio_deepfake"] = {"pipeline": pipe}
+            logger.info("Audio deepfake detector loaded successfully")
+        except Exception as e:
+            logger.warning(f"Failed to load audio deepfake detector: {e}")
+            _MODELS["audio_deepfake"] = None
+    
+    return _MODELS.get("audio_deepfake")
 
 
 # =============================================================================
@@ -340,14 +404,116 @@ def detect_with_clip(frames: List[np.ndarray]) -> float:
     return np.mean(scores) if scores else 0.0
 
 
-def detect_temporal_anomalies(frames: List[np.ndarray]) -> Tuple[float, int]:
-    """Detect temporal inconsistencies in video
+def detect_temporal_with_clip(frames: List[np.ndarray]) -> Tuple[float, int, Dict[str, Any]]:
+    """Detect temporal inconsistencies using CLIP embeddings
     
-    Note: This method is less reliable and disabled by default.
-    AI videos often have flickering, but this also catches natural motion.
+    This is more reliable than optical flow because:
+    1. CLIP understands semantic content, not just pixels
+    2. Less sensitive to lighting changes and camera motion
+    3. Can detect when content changes unnaturally (like face swaps)
+    
+    Returns:
+        score: 0-1, higher = more likely AI-generated
+        anomalies: number of detected temporal anomalies
+        details: additional analysis information
     """
     if len(frames) < 3:
-        return 0.0, 0
+        return 0.0, 0, {}
+    
+    model_data = _load_clip_detector()
+    if model_data is None:
+        # Fallback to simple method if CLIP unavailable
+        return _detect_temporal_simple(frames)
+    
+    import torch
+    from PIL import Image
+    
+    processor = model_data["processor"]
+    model = model_data["model"]
+    device = model_data["device"]
+    
+    # Extract CLIP embeddings for each frame
+    embeddings = []
+    
+    with torch.no_grad():
+        for frame in frames:
+            try:
+                pil_image = Image.fromarray(frame)
+                inputs = processor(images=pil_image, return_tensors="pt").to(device)
+                image_features = model.get_image_features(**inputs)
+                # Normalize embeddings
+                image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+                embeddings.append(image_features.cpu().numpy().flatten())
+            except Exception as e:
+                logger.debug(f"CLIP embedding error: {e}")
+    
+    if len(embeddings) < 3:
+        return 0.0, 0, {}
+    
+    # Compute cosine similarities between consecutive frames
+    similarities = []
+    for i in range(1, len(embeddings)):
+        sim = np.dot(embeddings[i], embeddings[i-1])
+        similarities.append(sim)
+    
+    # Compute statistics
+    mean_sim = np.mean(similarities)
+    std_sim = np.std(similarities)
+    min_sim = np.min(similarities)
+    
+    # Detect anomalies: sudden drops in similarity
+    anomalies = 0
+    anomaly_threshold = mean_sim - 2 * std_sim
+    anomaly_frames = []
+    
+    for i, sim in enumerate(similarities):
+        if sim < anomaly_threshold:
+            anomalies += 1
+            anomaly_frames.append(i + 1)
+    
+    # Calculate temporal consistency score
+    # Lower similarity variance = more consistent (real)
+    # Higher variance or sudden drops = potential AI artifacts
+    
+    # Factors that indicate AI-generated:
+    # 1. High variance in frame similarities (flickering)
+    # 2. Very low minimum similarity (sudden content change)
+    # 3. Multiple anomalies
+    
+    variance_score = min(1.0, std_sim * 10)  # Normalize std to 0-1
+    consistency_score = max(0, 1 - mean_sim)  # Lower mean = less consistent
+    anomaly_score = min(1.0, anomalies / 5)   # Normalize anomaly count
+    
+    # Weighted combination
+    temporal_score = (
+        0.3 * variance_score +
+        0.3 * consistency_score + 
+        0.4 * anomaly_score
+    )
+    
+    # Cap at 1.0
+    temporal_score = min(1.0, temporal_score)
+    
+    details = {
+        "mean_similarity": float(mean_sim),
+        "std_similarity": float(std_sim),
+        "min_similarity": float(min_sim),
+        "anomaly_frames": anomaly_frames,
+        "method": "CLIP-Temporal"
+    }
+    
+    logger.debug(f"CLIP Temporal: mean_sim={mean_sim:.3f}, std={std_sim:.3f}, anomalies={anomalies}")
+    
+    return temporal_score, anomalies, details
+
+
+def _detect_temporal_simple(frames: List[np.ndarray]) -> Tuple[float, int, Dict[str, Any]]:
+    """Simple fallback temporal detection using frame differences
+    
+    Note: Less reliable, used only when CLIP is unavailable.
+    """
+    if len(frames) < 3:
+        return 0.0, 0, {}
     
     anomalies = 0
     diffs = []
@@ -361,7 +527,7 @@ def detect_temporal_anomalies(frames: List[np.ndarray]) -> Tuple[float, int]:
         diffs.append(diff_score)
     
     if len(diffs) < 2:
-        return 0.0, 0
+        return 0.0, 0, {}
     
     # Compute second-order differences (acceleration)
     second_diffs = []
@@ -378,28 +544,31 @@ def detect_temporal_anomalies(frames: List[np.ndarray]) -> Tuple[float, int]:
         if sd > threshold:
             anomalies += 1
     
-    # Compute optical flow consistency
-    flow_scores = []
-    for i in range(1, min(len(gray_frames), 10)):
-        try:
-            flow = cv2.calcOpticalFlowFarneback(
-                gray_frames[i-1], gray_frames[i],
-                None, 0.5, 3, 15, 3, 5, 1.2, 0
-            )
-            magnitude = np.sqrt(flow[..., 0]**2 + flow[..., 1]**2)
-            flow_scores.append(np.std(magnitude))
-        except:
-            pass
+    # Normalize to 0-1 scale (conservative)
+    temporal_score = min(1.0, anomalies / 10.0)
     
-    # High variance in flow suggests potential AI generation
-    if flow_scores:
-        flow_variance = np.var(flow_scores)
-        # Normalize to 0-1 scale
-        temporal_score = min(1.0, flow_variance / 50.0 + anomalies / 10.0)
-    else:
-        temporal_score = anomalies / 10.0
+    details = {
+        "mean_diff": float(mean_diff),
+        "std_diff": float(std_diff),
+        "method": "Simple-FrameDiff"
+    }
     
-    return min(1.0, temporal_score), anomalies
+    return temporal_score, anomalies, details
+
+
+def detect_temporal_anomalies(frames: List[np.ndarray]) -> Tuple[float, int]:
+    """Detect temporal inconsistencies in video
+    
+    Uses CLIP-based temporal consistency analysis when available,
+    falls back to simple frame difference method otherwise.
+    
+    CLIP-based analysis is more reliable because:
+    - Understands semantic content, not just pixels
+    - Less sensitive to lighting/camera motion
+    - Better at detecting unnatural content changes
+    """
+    score, anomalies, _ = detect_temporal_with_clip(frames)
+    return score, anomalies
 
 
 def detect_faces(frames: List[np.ndarray], min_size: int = 30) -> Tuple[int, int]:
@@ -427,27 +596,131 @@ def detect_faces(frames: List[np.ndarray], min_size: int = 30) -> Tuple[int, int
     return total_faces, frames_with_faces
 
 
+def detect_with_aigc(frames: List[np.ndarray]) -> Tuple[float, List[float]]:
+    """Detect AI-generated content using umm-maybe/AI-image-detector
+    
+    This model detects images generated by:
+    - Stable Diffusion
+    - DALL-E
+    - Midjourney
+    - Other diffusion models
+    
+    Returns:
+        score: Average AI probability across frames
+        frame_scores: Per-frame AI probabilities
+    """
+    model_data = _load_aigc_detector()
+    
+    if model_data is None:
+        return 0.0, []
+    
+    from PIL import Image
+    
+    pipe = model_data["pipeline"]
+    scores = []
+    
+    for frame in frames[:8]:  # Sample 8 frames
+        try:
+            pil_image = Image.fromarray(frame)
+            result = pipe(pil_image)
+            
+            # Find "artificial" or "ai" label probability
+            ai_prob = 0.0
+            for item in result:
+                label = item["label"].lower()
+                if "artificial" in label or "ai" in label or "fake" in label:
+                    ai_prob = item["score"]
+                    break
+            
+            scores.append(ai_prob)
+        except Exception as e:
+            logger.debug(f"AIGC detection error: {e}")
+    
+    avg_score = np.mean(scores) if scores else 0.0
+    return avg_score, scores
+
+
+def detect_audio_deepfake(audio_path: Path) -> Tuple[float, Dict[str, Any]]:
+    """Detect audio deepfakes using MelodyMachine/Deepfake-audio-detection
+    
+    Detects:
+    - Voice cloning
+    - Text-to-speech synthesis
+    - Voice conversion
+    
+    Returns:
+        score: Fake probability (0-1)
+        details: Detection details
+    """
+    model_data = _load_audio_deepfake_detector()
+    
+    if model_data is None:
+        return 0.0, {"available": False}
+    
+    if audio_path is None or not Path(audio_path).exists():
+        return 0.0, {"available": False, "error": "No audio file"}
+    
+    pipe = model_data["pipeline"]
+    
+    try:
+        result = pipe(str(audio_path))
+        
+        # Find "fake" or "spoof" label probability
+        fake_prob = 0.0
+        real_prob = 0.0
+        
+        for item in result:
+            label = item["label"].lower()
+            if "fake" in label or "spoof" in label or "synthetic" in label:
+                fake_prob = item["score"]
+            elif "real" in label or "bonafide" in label or "genuine" in label:
+                real_prob = item["score"]
+        
+        # If we found real probability but not fake, compute it
+        if fake_prob == 0.0 and real_prob > 0:
+            fake_prob = 1.0 - real_prob
+        
+        details = {
+            "available": True,
+            "fake_probability": fake_prob,
+            "real_probability": real_prob,
+            "raw_result": result
+        }
+        
+        logger.info(f"Audio deepfake detection: fake={fake_prob:.3f}, real={real_prob:.3f}")
+        return fake_prob, details
+        
+    except Exception as e:
+        logger.warning(f"Audio deepfake detection failed: {e}")
+        return 0.0, {"available": False, "error": str(e)}
+
+
 # =============================================================================
 # Main Detection Function
 # =============================================================================
 def detect_ai_generated_video(
     video_path: Path,
+    audio_path: Optional[Path] = None,
     # Model selection
     use_deepfake: bool = True,
     use_clip: bool = True,
-    use_temporal: bool = False,  # Disabled by default - less reliable
+    use_temporal: bool = True,
     use_face_detection: bool = True,
+    use_aigc: bool = True,           # AI-generated content detection
+    use_audio_deepfake: bool = True, # Audio deepfake detection
     # Frame sampling
     num_frames: int = 16,
-    temporal_frames: int = 30,
+    temporal_frames: int = 16,
     # Thresholds
     fake_threshold: float = 0.5,
     no_face_threshold: float = 0.9,
     # Ensemble weights
-    deepfake_weight: float = 0.5,
-    clip_weight: float = 0.4,
-    temporal_weight: float = 0.0,  # Set to 0 by default
-    face_weight: float = 0.1,
+    deepfake_weight: float = 0.3,
+    clip_weight: float = 0.2,
+    temporal_weight: float = 0.15,
+    face_weight: float = 0.05,
+    aigc_weight: float = 0.2,        # AIGC weight
+    audio_deepfake_weight: float = 0.1,  # Audio deepfake weight
 ) -> AIDetectionResult:
     """
     Comprehensive AI-generated video detection using multiple models
@@ -455,10 +728,15 @@ def detect_ai_generated_video(
     Ensemble approach:
     1. Deep-Fake-Detector-v2 - ViT-based deepfake detection (92.12% accuracy)
     2. CLIP - Zero-shot synthetic detection
-    3. Temporal Analysis - Motion inconsistency (disabled by default)
+    3. CLIP-Temporal - Semantic temporal consistency analysis
     4. Face Detection - No-face video analysis
+    5. AIGC Detector - AI-generated content (Stable Diffusion, DALL-E, etc.)
+    6. Audio Deepfake - Voice cloning / speech synthesis detection
     
-    Reference: https://huggingface.co/prithivMLmods/Deep-Fake-Detector-v2-Model
+    References:
+    - https://huggingface.co/prithivMLmods/Deep-Fake-Detector-v2-Model
+    - https://huggingface.co/umm-maybe/AI-image-detector
+    - https://huggingface.co/MelodyMachine/Deepfake-audio-detection
     """
     result = AIDetectionResult()
     
@@ -536,7 +814,33 @@ def detect_ai_generated_video(
         
         logger.info(f"Face detection: {total_faces} faces in {frames_with_faces}/{len(frames)} frames")
     
-    # 5. Calculate Ensemble Score
+    # 5. AIGC Detection (AI-Generated Content)
+    if use_aigc:
+        logger.info("Running AIGC detection...")
+        aigc_score, aigc_frame_scores = detect_with_aigc(frames)
+        result.aigc_score = aigc_score
+        result.aigc_available = aigc_score > 0 or len(aigc_frame_scores) > 0
+        
+        if result.aigc_available:
+            scores.append(aigc_score)
+            weights.append(aigc_weight)
+            result.models_used.append("AIGC-Detector")
+            logger.info(f"AIGC score: {aigc_score:.3f}")
+    
+    # 6. Audio Deepfake Detection
+    if use_audio_deepfake and audio_path is not None:
+        logger.info("Running audio deepfake detection...")
+        audio_score, audio_details = detect_audio_deepfake(audio_path)
+        result.audio_deepfake_score = audio_score
+        result.audio_deepfake_available = audio_details.get("available", False)
+        
+        if result.audio_deepfake_available and audio_score > 0:
+            scores.append(audio_score)
+            weights.append(audio_deepfake_weight)
+            result.models_used.append("Audio-Deepfake")
+            logger.info(f"Audio deepfake score: {audio_score:.3f}")
+    
+    # 7. Calculate Ensemble Score
     if scores and weights:
         # Normalize weights
         total_weight = sum(weights)
@@ -552,6 +856,10 @@ def detect_ai_generated_video(
             # Classify type based on which model contributed most
             if result.deepfake_score > 0.6:
                 result.verdict = "Deepfake"
+            elif result.audio_deepfake_score > 0.6:
+                result.verdict = "Audio-Deepfake"
+            elif result.aigc_score > 0.6:
+                result.verdict = "AIGC"
             elif result.no_face_ratio > no_face_threshold and result.clip_synthetic_score > 0.5:
                 result.verdict = "Synthetic"
             else:
@@ -572,7 +880,9 @@ def detect_ai_generated_video(
             "deepfake": deepfake_weight,
             "clip": clip_weight,
             "temporal": temporal_weight,
-            "face": face_weight
+            "face": face_weight,
+            "aigc": aigc_weight,
+            "audio_deepfake": audio_deepfake_weight
         },
         "thresholds": {
             "fake": fake_threshold,
@@ -580,7 +890,12 @@ def detect_ai_generated_video(
         },
         "frames_sampled": num_frames,
         "temporal_frames": temporal_frames,
-        "model": "prithivMLmods/Deep-Fake-Detector-v2-Model"
+        "models": [
+            "prithivMLmods/Deep-Fake-Detector-v2-Model",
+            "openai/clip-vit-large-patch14",
+            "umm-maybe/AI-image-detector",
+            "MelodyMachine/Deepfake-audio-detection"
+        ]
     }
     
     logger.info(f"AI Detection complete: {result.verdict} (confidence: {result.confidence:.1%})")

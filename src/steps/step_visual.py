@@ -76,7 +76,9 @@ class VisualAnalysisStep(PipelineStep[VideoInput, VisualOutput]):
             raw_result = extract_visual_metrics(
                 str(input_data.video_path),
                 str(frames_dir),
-                input_data.frame_mode
+                input_data.frame_mode,
+                target_frames=input_data.target_frames,
+                scene_threshold=input_data.scene_threshold
             )
             
             # 转换为结构化输出

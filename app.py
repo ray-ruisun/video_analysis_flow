@@ -429,11 +429,18 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
     
     verdict_emoji = {
         "Real": "✅", "Suspicious": "⚠️", "Deepfake": "🎭",
+        "AIGC": "🎨", "Audio-Deepfake": "🔊",
         "Synthetic": "🤖", "AI-Generated": "🤖", "Unknown": "❓"
     }
     emoji = verdict_emoji.get(output.verdict, "❓")
     
     models_str = ", ".join(output.models_used) if output.models_used else "None"
+    
+    # Get AIGC and audio scores with fallback
+    aigc_score = getattr(output, 'aigc_score', 0.0)
+    aigc_available = getattr(output, 'aigc_available', False)
+    audio_score = getattr(output, 'audio_deepfake_score', 0.0)
+    audio_available = getattr(output, 'audio_deepfake_available', False)
     
     return f"""## 🤖 {t('ai_results')}
 
@@ -442,9 +449,11 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
 
 | Model | Score | Status |
 |:---|:---:|:---:|
-| DeepFake-v2 (ViT) | **{output.deepfake_score:.1%}** | {'✅' if output.deepfake_available else '❌'} |
-| CLIP (Synthetic) | **{output.clip_synthetic_score:.1%}** | {'✅' if output.clip_available else '❌'} |
-| Temporal (Motion) | **{output.temporal_score:.1%}** | ✅ |
+| 🎭 DeepFake-v2 (ViT) | **{output.deepfake_score:.1%}** | {'✅' if output.deepfake_available else '❌'} |
+| 🔍 CLIP (Synthetic) | **{output.clip_synthetic_score:.1%}** | {'✅' if output.clip_available else '❌'} |
+| ⏱️ CLIP-Temporal | **{output.temporal_score:.1%}** | ✅ |
+| 🎨 AIGC (SD/DALL-E) | **{aigc_score:.1%}** | {'✅' if aigc_available else '❌'} |
+| 🔊 Audio Deepfake | **{audio_score:.1%}** | {'✅' if audio_available else '❌'} |
 
 | Face Analysis | Value |
 |:---|:---:|
@@ -496,7 +505,9 @@ def run_visual(progress=gr.Progress()):
     input_data = VideoInput(
         video_path=STATE.video_path,
         work_dir=STATE.work_dir,
-        frame_mode=cfg.frame_mode
+        frame_mode=cfg.frame_mode,
+        target_frames=cfg.target_frames,
+        scene_threshold=cfg.scene_threshold
     )
     
     progress(0.4, desc=f"{t('analyzing')}...")
@@ -533,6 +544,7 @@ def run_asr(language: str, progress=gr.Progress()):
         audio_path=STATE.audio_path,
         language=language,
         model_size=cfg.whisper_model,
+        beam_size=cfg.whisper_beam_size,
         enable_prosody=True,
         enable_emotion=True
     )
@@ -554,6 +566,8 @@ def run_yolo(progress=gr.Progress()):
     input_data = YOLOInput(
         video_path=STATE.video_path,
         target_frames=cfg.target_frames,
+        model_name=cfg.model_name,
+        confidence_threshold=cfg.confidence_threshold,
         enable_colors=cfg.enable_colors,
         enable_materials=cfg.enable_materials
     )
@@ -573,14 +587,17 @@ def run_ai_detection(progress=gr.Progress()):
     if not cfg.enabled:
         return "❌ AI Detection is disabled in configuration"
     
-    progress(0.1, desc=f"{t('loading')} DeepFake-v2 + CLIP...")
+    progress(0.1, desc=f"{t('loading')} AI Detection Models...")
     step = AIDetectionStep()
     input_data = AIDetectionInput(
         video_path=STATE.video_path,
+        audio_path=STATE.audio_path,  # Pass audio for audio deepfake detection
         use_deepfake=cfg.use_deepfake,
         use_clip=cfg.use_clip,
         use_temporal=cfg.use_temporal,
         use_face_detection=cfg.use_face_detection,
+        use_aigc=cfg.use_aigc,
+        use_audio_deepfake=cfg.use_audio_deepfake,
         num_frames=cfg.num_frames,
         temporal_frames=cfg.temporal_frames,
         fake_threshold=cfg.fake_threshold,
@@ -588,6 +605,8 @@ def run_ai_detection(progress=gr.Progress()):
         deepfake_weight=cfg.deepfake_weight,
         clip_weight=cfg.clip_weight,
         temporal_weight=cfg.temporal_weight,
+        aigc_weight=cfg.aigc_weight,
+        audio_deepfake_weight=cfg.audio_deepfake_weight,
         face_weight=cfg.face_weight,
     )
     
@@ -900,7 +919,7 @@ def create_ui():
                         gr.Markdown("**Models**")
                         cfg_ai_deepfake = gr.Checkbox(value=cfg.ai_detection.use_deepfake, label="DeepFake-v2 (ViT) ⭐")
                         cfg_ai_clip = gr.Checkbox(value=cfg.ai_detection.use_clip, label="CLIP (Synthetic) ⭐")
-                        cfg_ai_temporal = gr.Checkbox(value=cfg.ai_detection.use_temporal, label="Temporal (Motion) ⚠️ Unreliable")
+                        cfg_ai_temporal = gr.Checkbox(value=cfg.ai_detection.use_temporal, label="Temporal (CLIP) ✅")
                         cfg_ai_face = gr.Checkbox(value=cfg.ai_detection.use_face_detection, label="Face Detection")
                         
                         cfg_ai_threshold = gr.Slider(0.1, 0.9, value=cfg.ai_detection.fake_threshold, step=0.05, label="Fake Threshold")

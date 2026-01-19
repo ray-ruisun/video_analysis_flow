@@ -662,7 +662,7 @@ def create_contact_sheet(frames, mode, output_path, cols=4, pad=6):
     return str(output_path)
 
 
-def extract_visual_metrics(video_path, output_dir, frame_mode="edge"):
+def extract_visual_metrics(video_path, output_dir, frame_mode="edge", target_frames=50, scene_threshold=27.0):
     """
     Extract all visual metrics from a video.
     
@@ -670,6 +670,8 @@ def extract_visual_metrics(video_path, output_dir, frame_mode="edge"):
         video_path: Path to video file
         output_dir: Directory for output assets
         frame_mode: Contact sheet mode ("edge", "mosaic", "off")
+        target_frames: Number of frames to sample for analysis
+        scene_threshold: Scene detection sensitivity threshold
         
     Returns:
         dict: Visual metrics dictionary
@@ -680,7 +682,7 @@ def extract_visual_metrics(video_path, output_dir, frame_mode="edge"):
     """
     try:
         # Sample frames
-        frames, fps, total_frames, duration = sample_frames(video_path)
+        frames, fps, total_frames, duration = sample_frames(video_path, target=target_frames)
         
         # Color and lighting analysis
         hues, sats, vals, v_stds = [], [], [], []
