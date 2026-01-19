@@ -11,22 +11,50 @@ import os
 import numpy as np
 from loguru import logger
 
-# Required dependencies - raise error if missing
+# Required dependencies
 try:
     import librosa
     import soundfile as sf
-    import essentia.standard as es
+    LIBROSA_AVAILABLE = True
 except ImportError as e:
-    logger.error(f"Required audio libraries not installed: {e}")
-    logger.error("Install with: pip install librosa soundfile essentia-tensorflow")
-    raise ImportError("librosa, soundfile, and essentia-tensorflow are required. Install with: pip install librosa soundfile essentia-tensorflow")
+    logger.error(f"librosa/soundfile not installed: {e}")
+    logger.error("Install with: pip install librosa soundfile")
+    raise ImportError("librosa and soundfile are required. Install with: pip install librosa soundfile")
 
-MUSIC_EXTRACTOR = es.MusicExtractor(
-    lowlevelStats=['mean', 'stdev'],
-    rhythmStats=['mean', 'stdev'],
-    tonalStats=['mean', 'stdev'],
-    highlevelStats=['mean']
-)
+# Essentia is optional - provides BGM style, mood, and instrument detection
+ESSENTIA_AVAILABLE = False
+MUSIC_EXTRACTOR = None
+
+try:
+    import essentia.standard as es
+    # Try to create MusicExtractor with different parameter combinations
+    # (API changed between versions)
+    try:
+        # Newer version (without highlevelStats)
+        MUSIC_EXTRACTOR = es.MusicExtractor(
+            lowlevelStats=['mean', 'stdev'],
+            rhythmStats=['mean', 'stdev'],
+            tonalStats=['mean', 'stdev']
+        )
+        ESSENTIA_AVAILABLE = True
+        logger.debug("Essentia MusicExtractor initialized (new API)")
+    except (TypeError, ValueError):
+        try:
+            # Older version (with highlevelStats)
+            MUSIC_EXTRACTOR = es.MusicExtractor(
+                lowlevelStats=['mean', 'stdev'],
+                rhythmStats=['mean', 'stdev'],
+                tonalStats=['mean', 'stdev'],
+                highlevelStats=['mean']
+            )
+            ESSENTIA_AVAILABLE = True
+            logger.debug("Essentia MusicExtractor initialized (legacy API)")
+        except Exception as e:
+            logger.warning(f"Failed to initialize MusicExtractor: {e}")
+            ESSENTIA_AVAILABLE = False
+except ImportError:
+    logger.warning("Essentia not available. BGM style, mood, and instrument detection will be limited.")
+    logger.warning("Install with: pip install essentia-tensorflow")
 
 MOOD_TAGS = [
     "mood_happy",
@@ -108,15 +136,42 @@ def extract_audio_metrics(audio_path):
         rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.85)
         mean_rolloff = float(np.mean(rolloff))
         
-        # Essentia high-level descriptors
-        essentia_features = extract_essentia_features(audio_path)
-        genre = str(essentia_features['highlevel.genre_dortmund.value'])
-        mood_summary, mood_tags = summarize_mood_from_essentia(essentia_features)
-        instruments = detect_instruments(essentia_features)
-        
+        # Essentia high-level descriptors (optional)
+        genre = "Unknown"
+        mood_summary = "Unknown"
+        mood_tags = []
+        instruments = {"detected_instruments": [], "method": "N/A"}
         tonal_key = None
-        if 'tonal.key_key' in essentia_features and 'tonal.key_scale' in essentia_features:
-            tonal_key = f"{str(essentia_features['tonal.key_key']).capitalize()} {str(essentia_features['tonal.key_scale']).capitalize()}"
+        
+        if ESSENTIA_AVAILABLE:
+            try:
+                essentia_features = extract_essentia_features(audio_path)
+                if essentia_features:
+                    # Genre detection
+                    if 'highlevel.genre_dortmund.value' in essentia_features:
+                        genre = str(essentia_features['highlevel.genre_dortmund.value'])
+                    
+                    # Mood analysis
+                    try:
+                        mood_summary, mood_tags = summarize_mood_from_essentia(essentia_features)
+                    except Exception as e:
+                        logger.warning(f"Mood analysis failed: {e}")
+                    
+                    # Instrument detection
+                    try:
+                        instruments = detect_instruments(essentia_features)
+                    except Exception as e:
+                        logger.warning(f"Instrument detection failed: {e}")
+                    
+                    # Key signature
+                    if 'tonal.key_key' in essentia_features and 'tonal.key_scale' in essentia_features:
+                        tonal_key = f"{str(essentia_features['tonal.key_key']).capitalize()} {str(essentia_features['tonal.key_scale']).capitalize()}"
+            except Exception as e:
+                logger.warning(f"Essentia analysis failed, using librosa fallback: {e}")
+        else:
+            logger.debug("Essentia not available, using librosa-only analysis")
+            # Fallback: estimate mood from tempo and energy
+            mood_summary = classify_bgm_mood(float(tempo), percussive_ratio, mean_centroid, energy_variance)
         
         result = {
             "tempo_bpm": float(tempo),
@@ -147,16 +202,23 @@ def extract_audio_metrics(audio_path):
 
 def extract_essentia_features(audio_path):
     """Run Essentia MusicExtractor on the audio file."""
+    if not ESSENTIA_AVAILABLE or MUSIC_EXTRACTOR is None:
+        logger.warning("Essentia MusicExtractor not available")
+        return None
+    
     try:
         features, _ = MUSIC_EXTRACTOR(audio_path)
         return features
     except Exception as e:
         logger.error(f"Essentia MusicExtractor failed: {e}")
-        raise
+        return None
 
 
 def summarize_mood_from_essentia(essentia_features):
     """Summarize mood predictions from Essentia high-level descriptors."""
+    if essentia_features is None:
+        return "Unknown", []
+    
     mood_entries = []
     for tag in MOOD_TAGS:
         value_key = f"highlevel.{tag}.value"
@@ -167,8 +229,8 @@ def summarize_mood_from_essentia(essentia_features):
             mood_entries.append({"label": label, "probability": probability})
     
     if not mood_entries:
-        logger.error("Essentia mood descriptors missing")
-        raise ValueError("Essentia mood descriptors missing")
+        logger.warning("Essentia mood descriptors not found in features")
+        return "Unknown", []
     
     top_entry = max(mood_entries, key=lambda item: item["probability"])
     summary = f"{top_entry['label']} ({top_entry['probability']:.2f})"
@@ -179,17 +241,29 @@ def detect_instruments(essentia_features):
     """
     Detect instrumentation characteristics from Essentia high-level descriptors.
     """
+    if essentia_features is None:
+        return {"detected_instruments": [], "method": "N/A"}
+    
     instrumentation = []
     
-    voice_value = str(essentia_features['highlevel.voice_instrumental.value'])
+    # Check if the required key exists
+    voice_key = 'highlevel.voice_instrumental.value'
+    if voice_key not in essentia_features:
+        return {"detected_instruments": [], "method": "Essentia (limited)"}
+    
+    voice_value = str(essentia_features[voice_key])
     if voice_value == "instrumental":
         instrumentation.append("Instrumental focus")
     else:
         instrumentation.append("Vocal focus")
     
-    if str(essentia_features['highlevel.mood_acoustic.value']) == "acoustic":
+    # Safely check for acoustic/electronic keys
+    acoustic_key = 'highlevel.mood_acoustic.value'
+    electronic_key = 'highlevel.mood_electronic.value'
+    
+    if acoustic_key in essentia_features and str(essentia_features[acoustic_key]) == "acoustic":
         instrumentation.append("Acoustic timbre")
-    if str(essentia_features['highlevel.mood_electronic.value']) == "electronic":
+    if electronic_key in essentia_features and str(essentia_features[electronic_key]) == "electronic":
         instrumentation.append("Electronic elements")
     
     instrumentation = list(dict.fromkeys(instrumentation))  # deduplicate while preserving order
