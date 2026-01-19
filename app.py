@@ -1560,33 +1560,72 @@ def run_all(language: str, progress=gr.Progress()):
 
 
 def gen_report(progress=gr.Progress()):
-    if STATE.video_path is None:
+    # Check if any videos are available
+    if not STATE.videos and STATE.video_path is None:
         error_html = "<div style='text-align:center; padding:40px; background:#fee; border-radius:8px;'><p>❌ Please upload a video first</p></div>"
         return f"❌ {t('upload_first')}", None, None, error_html
     
-    if STATE.visual_output is None and STATE.audio_output is None:
+    # Check if any analysis has been run
+    has_analysis = False
+    if STATE.videos:
+        for v in STATE.videos:
+            if v.visual_output or v.audio_output or v.asr_output or v.yolo_output or v.ai_output:
+                has_analysis = True
+                break
+    else:
+        has_analysis = STATE.visual_output is not None or STATE.audio_output is not None
+    
+    if not has_analysis:
         error_html = "<div style='text-align:center; padding:40px; background:#fee; border-radius:8px;'><p>❌ Please run analysis first</p></div>"
         return f"❌ {t('run_analysis_first')}", None, None, error_html
     
     progress(0.2, desc="📄 Generating Word...")
     
-    metrics = VideoMetrics(path=str(STATE.video_path))
-    metrics.visual = STATE.visual_output
-    metrics.audio = STATE.audio_output
-    metrics.asr = STATE.asr_output
-    metrics.yolo = STATE.yolo_output
+    # Build metrics list for all videos
+    all_metrics = []
+    
+    if STATE.videos:
+        # Multi-video mode
+        for video in STATE.videos:
+            metrics = VideoMetrics(path=str(video.video_path) if video.video_path else "")
+            metrics.visual = video.visual_output
+            metrics.audio = video.audio_output
+            metrics.asr = video.asr_output
+            metrics.yolo = video.yolo_output
+            
+            metrics_dict = metrics.to_dict()
+            
+            # Add AI detection to the metrics dict
+            if video.ai_output:
+                metrics_dict['ai_detection'] = video.ai_output.to_dict()
+            
+            all_metrics.append(metrics_dict)
+    else:
+        # Single video mode (legacy)
+        metrics = VideoMetrics(path=str(STATE.video_path))
+        metrics.visual = STATE.visual_output
+        metrics.audio = STATE.audio_output
+        metrics.asr = STATE.asr_output
+        metrics.yolo = STATE.yolo_output
+        
+        metrics_dict = metrics.to_dict()
+        
+        # Add AI detection
+        if STATE.ai_output:
+            metrics_dict['ai_detection'] = STATE.ai_output.to_dict()
+        
+        all_metrics.append(metrics_dict)
     
     if STATE.consensus_output is None:
         run_consensus()
     
-    metrics_dict = metrics.to_dict()
     consensus_dict = STATE.consensus_output.to_dict() if STATE.consensus_output else {}
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_path = STATE.work_dir / f"report_{timestamp}.docx"
     
     generate_word_report(
-        video_metrics=[metrics_dict],
+        video_metrics=all_metrics,
         consensus=consensus_dict,
         output_path=str(report_path),
         show_screenshots=STATE.config.report.include_screenshots
@@ -1599,7 +1638,8 @@ def gen_report(progress=gr.Progress()):
     
     progress(1.0, desc=t('done'))
     
-    status = f"{t('report_generated')}\n📄 {report_path.name}"
+    num_videos = len(all_metrics)
+    status = f"{t('report_generated')} ({num_videos} video{'s' if num_videos > 1 else ''})\n📄 {report_path.name}"
     
     # Generate PDF preview HTML
     pdf_preview_html = "<div style='text-align:center; padding:40px; background:#f5f5f5; border-radius:8px;'><p>📄 PDF conversion not available (requires LibreOffice)</p></div>"
@@ -1621,18 +1661,40 @@ def gen_report(progress=gr.Progress()):
 
 
 def export_json():
-    if STATE.video_path is None:
+    if not STATE.videos and STATE.video_path is None:
         return f"❌ {t('upload_first')}", None, "// Please upload a video first"
+    
+    # Build data for all videos
+    videos_data = []
+    
+    if STATE.videos:
+        for video in STATE.videos:
+            video_data = {
+                "video_path": str(video.video_path) if video.video_path else None,
+                "visual": video.visual_output.to_dict() if video.visual_output else None,
+                "audio": video.audio_output.to_dict() if video.audio_output else None,
+                "asr": video.asr_output.to_dict() if video.asr_output else None,
+                "yolo": video.yolo_output.to_dict() if video.yolo_output else None,
+                "ai_detection": video.ai_output.to_dict() if video.ai_output else None,
+            }
+            videos_data.append(video_data)
+    else:
+        # Legacy single video mode
+        video_data = {
+            "video_path": str(STATE.video_path),
+            "visual": STATE.visual_output.to_dict() if STATE.visual_output else None,
+            "audio": STATE.audio_output.to_dict() if STATE.audio_output else None,
+            "asr": STATE.asr_output.to_dict() if STATE.asr_output else None,
+            "yolo": STATE.yolo_output.to_dict() if STATE.yolo_output else None,
+            "ai_detection": STATE.ai_output.to_dict() if STATE.ai_output else None,
+        }
+        videos_data.append(video_data)
     
     data = {
         "timestamp": datetime.now().isoformat(),
-        "video_path": str(STATE.video_path),
+        "num_videos": len(videos_data),
         "config": STATE.config.to_dict(),
-        "visual": STATE.visual_output.to_dict() if STATE.visual_output else None,
-        "audio": STATE.audio_output.to_dict() if STATE.audio_output else None,
-        "asr": STATE.asr_output.to_dict() if STATE.asr_output else None,
-        "yolo": STATE.yolo_output.to_dict() if STATE.yolo_output else None,
-        "ai_detection": STATE.ai_output.to_dict() if STATE.ai_output else None,
+        "videos": videos_data,
         "consensus": STATE.consensus_output.to_dict() if STATE.consensus_output else None,
     }
     

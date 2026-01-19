@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Word report generation module (Enhanced Version)
+Word report generation module (Enhanced Version - SOTA 2026)
 
 创建详细的 .docx 报告，包含:
 - 执行摘要
-- 跨视频共识分析 (含详细分布)
-- 每个视频的详细分析
+- AI生成检测结果
+- 跨视频共识分析 (含详细分布和置信度)
+- 每个视频的详细分析 (含置信度)
 - 数据表格
 - 技术说明和建议
+
+Models:
+- CLIP (openai/clip-vit-large-patch14) - Scene Classification
+- CLAP (laion/larger_clap_music_and_speech) - Audio Classification
+- HuBERT (superb/hubert-large-superb-er) - Speech Emotion
+- Whisper large-v3 (faster-whisper) - ASR
+- YOLO26x (ultralytics) - Object Detection
+- Deep-Fake-Detector-v2 - AI Detection
 """
 
 import os
@@ -33,7 +42,7 @@ def set_cell_shading(cell, color: str):
     cell._tc.get_or_add_tcPr().append(shading)
 
 
-def create_report_header(doc, title="Video Style Analysis Report"):
+def create_report_header(doc, title="Video Style Analysis Report", num_videos=1):
     """Add formatted header to document."""
     # Title
     title_para = doc.add_paragraph()
@@ -46,7 +55,8 @@ def create_report_header(doc, title="Video Style Analysis Report"):
     # Subtitle with timestamp
     subtitle = doc.add_paragraph()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    subtitle_run = subtitle.add_run(f"Comprehensive Style Pattern Analysis | Generated: {timestamp}")
+    mode = "Multi-Video Comparison" if num_videos > 1 else "Single Video Analysis"
+    subtitle_run = subtitle.add_run(f"{mode} ({num_videos} video{'s' if num_videos > 1 else ''}) | Generated: {timestamp}")
     subtitle_run.font.size = Pt(11)
     subtitle_run.font.color.rgb = RGBColor(100, 100, 100)
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -54,8 +64,8 @@ def create_report_header(doc, title="Video Style Analysis Report"):
     # Technology stack notice
     tech = doc.add_paragraph()
     tech_run = tech.add_run(
-        "🔧 Powered by: CLIP (Scene) | CLAP (Audio) | HuBERT (Emotion) | "
-        "Whisper large-v3-turbo (ASR) | YOLO11 (Detection)"
+        "🔧 SOTA 2026: CLIP | CLAP | HuBERT | Whisper large-v3 | YOLO26x | "
+        "DeepFake-v2 | AIGC-Detector | Audio-Deepfake"
     )
     tech_run.font.size = Pt(9)
     tech_run.font.color.rgb = RGBColor(80, 120, 80)
@@ -96,9 +106,16 @@ def add_executive_summary(doc, video_metrics, consensus):
         m.get("visual", {}).get("cuts", 0) for m in video_metrics
     )
     
+    # Check AI detection results
+    ai_verdicts = [m.get("ai_detection", {}).get("verdict", "N/A") for m in video_metrics if m.get("ai_detection")]
+    ai_summary = ""
+    if ai_verdicts:
+        real_count = sum(1 for v in ai_verdicts if v == "Real")
+        ai_summary = f" AI Detection: {real_count}/{len(ai_verdicts)} classified as Real."
+    
     doc.add_paragraph(
         f"This report analyzes {num_videos} video(s) with a combined duration of "
-        f"{format_value(total_duration, '.1f')} seconds and {total_cuts} detected cuts."
+        f"{format_value(total_duration, '.1f')} seconds and {total_cuts} detected cuts.{ai_summary}"
     )
     
     # Key findings
@@ -113,6 +130,15 @@ def add_executive_summary(doc, video_metrics, consensus):
         f"Editing pace: {format_value(consensus.get('cuts_per_minute'), '.1f')} cuts/minute",
         f"Scene type: {consensus.get('scene_category', 'N/A')}",
     ]
+    
+    # Add AI detection summary if available
+    if ai_verdicts:
+        for i, metrics in enumerate(video_metrics, 1):
+            ai = metrics.get("ai_detection", {})
+            if ai:
+                verdict = ai.get('verdict', 'Unknown')
+                confidence = ai.get('confidence', 0)
+                findings.append(f"Video {i} AI verdict: {verdict} ({confidence:.1%})")
     
     for finding in findings:
         doc.add_paragraph(f"  • {finding}")
@@ -355,7 +381,7 @@ def add_consensus_section(doc, consensus):
     if consensus.get('yolo_available'):
         doc.add_paragraph()
         p = doc.add_paragraph()
-        p.add_run("Environment (YOLO11): ").bold = True
+        p.add_run("Environment (YOLO26): ").bold = True
         p.add_run(
             f"{consensus.get('yolo_environment', 'N/A')} - "
             f"{consensus.get('yolo_style', 'N/A')}"
@@ -575,21 +601,24 @@ def add_per_video_section(doc, video_metrics, show_screenshots=True):
         # ========== YOLO Analysis ==========
         yolo = metrics.get("yolo", {})
         if yolo and (yolo.get("available") or yolo.get("detection")):
-            add_section_header(doc, "Object Detection (YOLO11)", level=3)
+            add_section_header(doc, "Object Detection (YOLO26x)", level=3)
             
             detection = yolo.get("detection", {})
             environment = yolo.get("environment", {})
+            avg_conf = detection.get('avg_confidence', {})
+            overall_conf = sum(avg_conf.values()) / max(len(avg_conf), 1) if avg_conf else 0
             
             table = doc.add_table(rows=1, cols=2)
             table.style = 'Table Grid'
             
             yolo_data = [
-                ("Environment Type", environment.get('environment_type', 'N/A')),
+                ("Environment Type", f"{environment.get('environment_type', 'N/A')} ({environment.get('confidence', 0):.0%})"),
                 ("Cooking Style", environment.get('cooking_style', 'N/A')),
                 ("Appliance Tier", environment.get('appliance_tier', 'N/A')),
                 ("Unique Objects", f"{detection.get('unique_objects', 0)}"),
                 ("Total Detections", f"{detection.get('total_detections', 0)}"),
                 ("Frames Processed", f"{detection.get('frames_processed', 0)}"),
+                ("Avg Confidence", f"{overall_conf:.1%}"),
             ]
             
             header_cells = table.rows[0].cells
@@ -604,38 +633,54 @@ def add_per_video_section(doc, video_metrics, show_screenshots=True):
                 row[0].text = metric
                 row[1].text = str(value)
             
-            # Detected objects
+            # Detected objects with confidence
             object_counts = detection.get('object_counts', {})
             if object_counts:
                 doc.add_paragraph()
                 p = doc.add_paragraph()
-                p.add_run("Detected Objects: ").bold = True
-                avg_conf = detection.get('avg_confidence', {})
+                p.add_run("Detected Objects (with confidence): ").bold = True
                 for obj, count in sorted(object_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
                     conf = avg_conf.get(obj, 0)
-                    doc.add_paragraph(f"    • {obj}: {count}x (confidence: {conf:.1%})")
+                    doc.add_paragraph(f"    • {obj}: {count}x ({conf:.1%})")
             
             # Color analysis
             colors = yolo.get('colors', {})
-            if colors and colors.get('detailed_analysis'):
+            if colors:
                 doc.add_paragraph()
                 p = doc.add_paragraph()
                 p.add_run("Object Colors: ").bold = True
-                for obj, analysis in list(colors['detailed_analysis'].items())[:5]:
-                    dominant = analysis.get('dominant', 'Unknown')
-                    doc.add_paragraph(f"    • {obj}: {dominant}")
-                    for item in analysis.get('distribution', [])[:3]:
-                        doc.add_paragraph(f"        - {item['color']}: {item['percentage']}%")
+                if colors.get('detailed_analysis'):
+                    for obj, analysis in list(colors['detailed_analysis'].items())[:5]:
+                        dominant = analysis.get('dominant', 'Unknown')
+                        doc.add_paragraph(f"    • {obj}: {dominant}")
+                        for item in analysis.get('distribution', [])[:3]:
+                            if isinstance(item, dict):
+                                doc.add_paragraph(f"        - {item.get('color', '?')}: {item.get('percentage', 0):.0%}")
+                elif colors.get('dominant_colors'):
+                    dom = colors.get('dominant_colors', [])
+                    if isinstance(dom, list):
+                        doc.add_paragraph(f"    • Dominant: {', '.join(str(c) for c in dom[:5])}")
+                    elif isinstance(dom, dict):
+                        for c, v in list(dom.items())[:5]:
+                            doc.add_paragraph(f"    • {c}: {v}")
             
             # Material analysis
             materials = yolo.get('materials', {})
-            if materials and materials.get('detailed_analysis'):
+            if materials:
                 doc.add_paragraph()
                 p = doc.add_paragraph()
                 p.add_run("Object Materials: ").bold = True
-                for obj, analysis in list(materials['detailed_analysis'].items())[:5]:
-                    dominant = analysis.get('dominant', 'Unknown')
-                    doc.add_paragraph(f"    • {obj}: {dominant}")
+                if materials.get('detailed_analysis'):
+                    for obj, analysis in list(materials['detailed_analysis'].items())[:5]:
+                        dominant = analysis.get('dominant', 'Unknown')
+                        doc.add_paragraph(f"    • {obj}: {dominant}")
+                elif materials.get('dominant_materials'):
+                    dom = materials.get('dominant_materials', [])
+                    if isinstance(dom, list):
+                        doc.add_paragraph(f"    • Dominant: {', '.join(str(m) for m in dom[:5])}")
+                    elif isinstance(dom, dict):
+                        for m, v in list(dom.items())[:5]:
+                            doc.add_paragraph(f"    • {m}: {v}")
         
         # Add screenshot if available
         if show_screenshots:
@@ -653,9 +698,94 @@ def add_per_video_section(doc, video_metrics, show_screenshots=True):
         doc.add_paragraph()  # Spacing between videos
 
 
+def add_ai_detection_section(doc, video_metrics):
+    """Add AI detection results section."""
+    # Check if any video has AI detection results
+    has_ai = any(m.get("ai_detection") for m in video_metrics)
+    if not has_ai:
+        return
+    
+    add_section_header(doc, "🤖 III. AI Generation Detection", level=1)
+    doc.add_paragraph(
+        "Multi-model ensemble detection for deepfakes, AI-generated content, and synthetic media. "
+        "Uses weighted voting from multiple detection models for robust results."
+    )
+    
+    for i, metrics in enumerate(video_metrics, 1):
+        ai = metrics.get("ai_detection", {})
+        if not ai:
+            continue
+        
+        video_name = Path(metrics.get("path", f"Video {i}")).name
+        
+        # Video header
+        doc.add_paragraph()
+        video_header = doc.add_paragraph()
+        run = video_header.add_run(f"Video {i}: {video_name}")
+        run.bold = True
+        run.font.size = Pt(12)
+        run.font.color.rgb = RGBColor(140, 60, 60)
+        
+        # Verdict and confidence
+        verdict = ai.get('verdict', 'Unknown')
+        confidence = ai.get('confidence', 0)
+        
+        doc.add_paragraph()
+        p = doc.add_paragraph()
+        p.add_run(f"Verdict: ").bold = True
+        verdict_run = p.add_run(f"{verdict} ({confidence:.1%} confidence)")
+        if verdict == "Real":
+            verdict_run.font.color.rgb = RGBColor(0, 128, 0)
+        elif verdict in ["Deepfake", "AI-Generated", "Synthetic"]:
+            verdict_run.font.color.rgb = RGBColor(200, 0, 0)
+        else:
+            verdict_run.font.color.rgb = RGBColor(200, 150, 0)
+        
+        # Model scores table
+        table = doc.add_table(rows=1, cols=4)
+        table.style = 'Table Grid'
+        
+        headers = ['Model', 'Weight', 'Score', 'Status']
+        header_cells = table.rows[0].cells
+        for j, header in enumerate(headers):
+            header_cells[j].text = header
+            header_cells[j].paragraphs[0].runs[0].bold = True
+            set_cell_shading(header_cells[j], 'FFE0E0')
+        
+        # Get weights from analysis_details
+        weights = ai.get('analysis_details', {}).get('weights', {})
+        
+        models = [
+            ("DeepFake-v2", weights.get('deepfake', 0.30), ai.get('deepfake_score', 0), ai.get('deepfake_available', False)),
+            ("CLIP Synthetic", weights.get('clip', 0.20), ai.get('clip_synthetic_score', 0), ai.get('clip_available', False)),
+            ("CLIP-Temporal", weights.get('temporal', 0.15), ai.get('temporal_score', 0), ai.get('temporal_available', False)),
+            ("AIGC Detector", weights.get('aigc', 0.20), ai.get('aigc_score', 0), ai.get('aigc_available', False)),
+            ("Audio Deepfake", weights.get('audio_deepfake', 0.10), ai.get('audio_deepfake_score', 0), ai.get('audio_deepfake_available', False)),
+            ("Face Analysis", weights.get('face', 0.05), ai.get('no_face_ratio', 0), ai.get('face_available', False)),
+        ]
+        
+        for model_name, weight, score, available in models:
+            row = table.add_row().cells
+            row[0].text = model_name
+            row[1].text = f"{weight:.0%}"
+            row[2].text = f"{score:.1%}"
+            row[3].text = "✅" if available else "❌"
+        
+        # Additional details
+        doc.add_paragraph()
+        p = doc.add_paragraph()
+        p.add_run("Detection Details: ").bold = True
+        doc.add_paragraph(f"    • Faces Detected: {ai.get('faces_detected', 0)}")
+        doc.add_paragraph(f"    • Frames Analyzed: {ai.get('frames_analyzed', 0)}")
+        doc.add_paragraph(f"    • Frames with Faces: {ai.get('frames_with_faces', 0)}")
+        doc.add_paragraph(f"    • Temporal Anomalies: {ai.get('temporal_anomalies', 0)}")
+    
+    doc.add_paragraph()
+
+
 def add_technical_notes(doc):
     """Add technical notes section."""
-    add_section_header(doc, "🔬 III. Technical Notes", level=1)
+    add_section_header(doc, "🔬 IV. Technical Notes", level=1)
     
     notes = [
         ("CLIP Scene Classification", 
@@ -670,17 +800,22 @@ def add_technical_notes(doc):
          "Uses HuBERT-large trained on SUPERB for speech emotion recognition. "
          "Classifies into angry, happy, neutral, sad."),
         
-        ("Whisper large-v3-turbo", 
-         "Latest Whisper model for ASR. Supports 100+ languages with improved accuracy. "
+        ("Whisper large-v3", 
+         "Full large-v3 Whisper model for highest accuracy ASR. Supports 100+ languages. "
          "Provides word-level timestamps for prosody analysis."),
         
-        ("YOLO11 Object Detection", 
-         "Latest Ultralytics YOLO with improved mAP and speed. "
-         "Uses COCO dataset classes for kitchen and cooking object detection."),
+        ("YOLO26x Object Detection", 
+         "Latest YOLO26 extra-large model (Jan 2026) with highest accuracy. "
+         "Uses COCO dataset classes for comprehensive object detection."),
+        
+        ("AI Detection Ensemble",
+         "Multi-model approach: DeepFake-v2 (ViT, 92% acc), CLIP zero-shot synthetic detection, "
+         "CLIP-based temporal consistency, AIGC detector, Audio deepfake detector. "
+         "Final verdict from weighted ensemble voting."),
         
         ("Color Analysis",
          "HSV-based color classification with per-frame analysis. "
-         "Returns distribution of hue families across sampled frames."),
+         "Returns distribution with confidence scores across sampled frames."),
         
         ("Shot Detection",
          "Uses PySceneDetect for content-aware shot boundary detection. "
@@ -697,14 +832,17 @@ def add_technical_notes(doc):
 
 def add_references_section(doc):
     """Add references and citations."""
-    add_section_header(doc, "📚 References & Models", level=1)
+    add_section_header(doc, "📚 V. References & Models", level=1)
     
     references = [
         ("CLIP", "openai/clip-vit-large-patch14", "https://huggingface.co/openai/clip-vit-large-patch14"),
         ("CLAP", "laion/larger_clap_music_and_speech", "https://huggingface.co/laion/larger_clap_music_and_speech"),
         ("HuBERT", "superb/hubert-large-superb-er", "https://huggingface.co/superb/hubert-large-superb-er"),
-        ("Whisper", "large-v3-turbo via faster-whisper", "https://github.com/SYSTRAN/faster-whisper"),
-        ("YOLO11", "yolo11s.pt via Ultralytics", "https://docs.ultralytics.com/"),
+        ("Whisper", "large-v3 via faster-whisper", "https://github.com/SYSTRAN/faster-whisper"),
+        ("YOLO26", "yolo26x.pt via Ultralytics", "https://huggingface.co/collections/merve/yolo26-models"),
+        ("DeepFake-v2", "prithivMLmods/Deep-Fake-Detector-v2-Model", "https://huggingface.co/prithivMLmods/Deep-Fake-Detector-v2-Model"),
+        ("AIGC Detector", "umm-maybe/AI-image-detector", "https://huggingface.co/umm-maybe/AI-image-detector"),
+        ("Audio Deepfake", "MelodyMachine/Deepfake-audio-detection", "https://huggingface.co/MelodyMachine/Deepfake-audio-detection"),
         ("PySceneDetect", "Shot Boundary Detection", "https://www.scenedetect.com/"),
         ("librosa", "Audio Feature Extraction", "https://librosa.org/"),
         ("OpenCV", "Computer Vision", "https://opencv.org/"),
@@ -737,12 +875,15 @@ def generate_word_report(video_metrics, consensus, output_path,
     style.font.name = 'Arial'
     style.font.size = Pt(10)
     
+    num_videos = len(video_metrics)
+    
     # Build report sections
-    create_report_header(doc)
+    create_report_header(doc, num_videos=num_videos)
     add_executive_summary(doc, video_metrics, consensus)
     add_video_source_table(doc, video_metrics)
     add_consensus_section(doc, consensus)
     add_per_video_section(doc, video_metrics, show_screenshots)
+    add_ai_detection_section(doc, video_metrics)  # New AI detection section
     add_technical_notes(doc)
     
     if show_references:
