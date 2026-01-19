@@ -318,11 +318,23 @@ def log_step_output(step_name: str, input_data: Any, output_data: Any):
     if LOG_FILE is None:
         return
     
+    import numpy as np
+    
     # 转换为可序列化的格式
     def to_serializable(obj):
-        if hasattr(obj, 'to_dict'):
-            return obj.to_dict()
-        elif hasattr(obj, '__dict__'):
+        # 处理 numpy 类型
+        if isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64, np.float32)):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        # 处理 dataclass 和普通对象
+        elif hasattr(obj, 'to_dict'):
+            return to_serializable(obj.to_dict())
+        elif hasattr(obj, '__dict__') and not isinstance(obj, type):
             return {k: to_serializable(v) for k, v in obj.__dict__.items() if not k.startswith('_')}
         elif isinstance(obj, Path):
             return str(obj)
