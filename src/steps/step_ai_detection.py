@@ -68,6 +68,7 @@ class AIDetectionOutput(StepOutput):
     
     temporal_score: float = 0.0
     temporal_anomalies: int = 0
+    temporal_available: bool = False
     
     aigc_score: float = 0.0
     aigc_available: bool = False
@@ -80,6 +81,7 @@ class AIDetectionOutput(StepOutput):
     frames_with_faces: int = 0
     frames_analyzed: int = 0
     no_face_ratio: float = 0.0
+    face_available: bool = False
     
     # Frame-level details
     frame_scores: List[float] = field(default_factory=list)
@@ -100,6 +102,7 @@ class AIDetectionOutput(StepOutput):
             "clip_available": self.clip_available,
             "temporal_score": self.temporal_score,
             "temporal_anomalies": self.temporal_anomalies,
+            "temporal_available": self.temporal_available,
             "aigc_score": self.aigc_score,
             "aigc_available": self.aigc_available,
             "audio_deepfake_score": self.audio_deepfake_score,
@@ -108,6 +111,7 @@ class AIDetectionOutput(StepOutput):
             "frames_with_faces": self.frames_with_faces,
             "frames_analyzed": self.frames_analyzed,
             "no_face_ratio": self.no_face_ratio,
+            "face_available": self.face_available,
             "models_used": self.models_used,
             "analysis_details": self.analysis_details,
         }
@@ -178,6 +182,7 @@ class AIDetectionStep(PipelineStep[AIDetectionInput, AIDetectionOutput]):
                 clip_available=result.clip_available,
                 temporal_score=result.temporal_score,
                 temporal_anomalies=result.temporal_anomalies,
+                temporal_available=result.temporal_available,
                 aigc_score=result.aigc_score,
                 aigc_available=result.aigc_available,
                 audio_deepfake_score=result.audio_deepfake_score,
@@ -186,6 +191,7 @@ class AIDetectionStep(PipelineStep[AIDetectionInput, AIDetectionOutput]):
                 frames_with_faces=result.frames_with_faces,
                 frames_analyzed=result.frames_analyzed,
                 no_face_ratio=result.no_face_ratio,
+                face_available=result.face_available,
                 frame_scores=result.frame_scores,
                 models_used=result.models_used,
                 analysis_details=result.analysis_details,

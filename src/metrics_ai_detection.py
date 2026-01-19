@@ -44,6 +44,7 @@ class AIDetectionResult:
     
     temporal_score: float = 0.0
     temporal_anomalies: int = 0
+    temporal_available: bool = False
     
     # AIGC detection (AI-generated content)
     aigc_score: float = 0.0
@@ -58,6 +59,7 @@ class AIDetectionResult:
     frames_with_faces: int = 0
     frames_analyzed: int = 0
     no_face_ratio: float = 0.0
+    face_available: bool = False
     
     # Frame-level details
     frame_scores: List[float] = field(default_factory=list)
@@ -77,6 +79,7 @@ class AIDetectionResult:
             "clip_available": self.clip_available,
             "temporal_score": self.temporal_score,
             "temporal_anomalies": self.temporal_anomalies,
+            "temporal_available": self.temporal_available,
             "aigc_score": self.aigc_score,
             "aigc_available": self.aigc_available,
             "audio_deepfake_score": self.audio_deepfake_score,
@@ -85,6 +88,7 @@ class AIDetectionResult:
             "frames_with_faces": self.frames_with_faces,
             "frames_analyzed": self.frames_analyzed,
             "no_face_ratio": self.no_face_ratio,
+            "face_available": self.face_available,
             "models_used": self.models_used,
             "analysis_details": self.analysis_details,
         }
@@ -781,7 +785,7 @@ def detect_ai_generated_video(
             result.models_used.append("CLIP-ZeroShot")
             logger.info(f"CLIP synthetic score: {clip_score:.3f}")
     
-    # 3. Temporal Analysis (Motion Inconsistency) - Disabled by default
+    # 3. Temporal Analysis (Motion Inconsistency)
     if use_temporal and temporal_weight > 0:
         logger.info("Running temporal analysis...")
         consecutive_frames = extract_consecutive_frames(video_path, num_frames=temporal_frames)
@@ -789,12 +793,15 @@ def detect_ai_generated_video(
             temporal_score, anomalies = detect_temporal_anomalies(consecutive_frames)
             result.temporal_score = temporal_score
             result.temporal_anomalies = anomalies
+            result.temporal_available = True  # Mark as available
             
             if temporal_score > 0:
                 scores.append(temporal_score)
                 weights.append(temporal_weight)
                 result.models_used.append("Temporal-Analysis")
                 logger.info(f"Temporal score: {temporal_score:.3f}, anomalies: {anomalies}")
+    else:
+        result.temporal_available = False  # Explicitly disabled
     
     # 4. Face Detection
     if use_face_detection:
@@ -803,6 +810,7 @@ def detect_ai_generated_video(
         result.faces_detected = total_faces
         result.frames_with_faces = frames_with_faces
         result.no_face_ratio = 1.0 - (frames_with_faces / len(frames)) if frames else 0.0
+        result.face_available = True  # Mark as available
         
         # No-face videos with synthetic features are suspicious
         if result.no_face_ratio > no_face_threshold:
@@ -813,6 +821,8 @@ def detect_ai_generated_video(
             result.models_used.append("Face-Analysis")
         
         logger.info(f"Face detection: {total_faces} faces in {frames_with_faces}/{len(frames)} frames")
+    else:
+        result.face_available = False  # Explicitly disabled
     
     # 5. AIGC Detection (AI-Generated Content)
     if use_aigc:

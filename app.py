@@ -585,11 +585,13 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
     
     models_str = ", ".join(output.models_used) if output.models_used else "None"
     
-    # Get AIGC and audio scores with fallback
+    # Get scores and availability flags with fallback
     aigc_score = getattr(output, 'aigc_score', 0.0)
     aigc_available = getattr(output, 'aigc_available', False)
     audio_score = getattr(output, 'audio_deepfake_score', 0.0)
     audio_available = getattr(output, 'audio_deepfake_available', False)
+    temporal_available = getattr(output, 'temporal_available', False)
+    face_available = getattr(output, 'face_available', False)
     
     # Get weights from analysis details
     weights = output.analysis_details.get("weights", {})
@@ -620,10 +622,10 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
 |:------|:------:|:-----:|:------------:|:------:|:------------|
 | 🎭 **DeepFake-v2** | `{deepfake_w:.0%}` | {output.deepfake_score:.1%} | {weighted_contrib(output.deepfake_score, deepfake_w, output.deepfake_available)} | {'✅' if output.deepfake_available else '❌'} | *HuggingFace ViT model (92% acc), detects face swaps* |
 | 🔍 **CLIP Synthetic** | `{clip_w:.0%}` | {output.clip_synthetic_score:.1%} | {weighted_contrib(output.clip_synthetic_score, clip_w, output.clip_available)} | {'✅' if output.clip_available else '❌'} | *Zero-shot detection using CLIP embeddings* |
-| ⏱️ **CLIP-Temporal** | `{temporal_w:.0%}` | {output.temporal_score:.1%} | {weighted_contrib(output.temporal_score, temporal_w, True)} | ✅ | *Semantic consistency between frames (CLIP-based)* |
+| ⏱️ **CLIP-Temporal** | `{temporal_w:.0%}` | {output.temporal_score:.1%} | {weighted_contrib(output.temporal_score, temporal_w, temporal_available)} | {'✅' if temporal_available else '❌'} | *Semantic consistency between frames (CLIP-based)* |
 | 🎨 **AIGC Detector** | `{aigc_w:.0%}` | {aigc_score:.1%} | {weighted_contrib(aigc_score, aigc_w, aigc_available)} | {'✅' if aigc_available else '❌'} | *Detects Stable Diffusion, DALL-E, Midjourney* |
 | 🔊 **Audio Deepfake** | `{audio_w:.0%}` | {audio_score:.1%} | {weighted_contrib(audio_score, audio_w, audio_available)} | {'✅' if audio_available else '❌'} | *Detects voice cloning & TTS synthesis* |
-| 👤 **Face Analysis** | `{face_w:.0%}` | {output.no_face_ratio:.1%} | — | ✅ | *No-face ratio analysis (>90% suspicious)* |
+| 👤 **Face Analysis** | `{face_w:.0%}` | {output.no_face_ratio:.1%} | — | {'✅' if face_available else '❌'} | *No-face ratio analysis (>90% suspicious)* |
 
 ---
 
