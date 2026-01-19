@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 Video Style Analysis - Gradio Web Interface
-视频风格分析 - Gradio 网页界面
-
 SOTA Models: CLIP | CLAP | HuBERT | Whisper | YOLO11
 """
 
@@ -28,214 +26,6 @@ from steps import (
     VideoMetrics, VisualOutput, AudioOutput, ASROutput, YOLOOutput, ConsensusOutput,
 )
 from report_word import generate_word_report
-
-# =============================================================================
-# 国际化 (i18n)
-# =============================================================================
-I18N = {
-    "zh": {
-        "title": "🎬 视频风格分析系统",
-        "subtitle": "SOTA 2025/2026 | PyTorch + HuggingFace",
-        "tech_stack": "CLIP (场景) | CLAP (音频) | HuBERT (情感) | Whisper (ASR) | YOLO11 (检测)",
-        "tab_upload": "📤 上传与预览",
-        "tab_analysis": "🔬 分析",
-        "tab_results": "📊 结果与导出",
-        "upload_video": "上传视频",
-        "upload_label": "选择视频文件 (mp4, avi, mov, mkv)",
-        "upload_status": "状态",
-        "video_preview": "视频预览",
-        "audio_preview": "音频预览",
-        "audio_label": "提取的音频",
-        "frame_preview": "关键帧预览",
-        "frame_label": "均匀采样的关键帧",
-        "settings": "设置",
-        "asr_lang": "ASR 语言",
-        "ui_lang": "界面语言",
-        "analysis_ctrl": "分析控制",
-        "run_all": "🎯 一键分析全部",
-        "gen_report": "📄 生成报告",
-        "export_json": "💾 导出 JSON",
-        "step_exec": "分步执行",
-        "visual_btn": "📹 视觉分析",
-        "audio_btn": "🎵 音频分析",
-        "asr_btn": "🎤 语音分析",
-        "yolo_btn": "🔍 目标检测",
-        "consensus_btn": "🎯 共识计算",
-        "tab_visual": "📹 视觉",
-        "tab_audio": "🎵 音频",
-        "tab_asr": "🎤 语音",
-        "tab_yolo": "🔍 检测",
-        "tab_consensus": "🎯 共识",
-        "report_gen": "报告生成",
-        "report_status": "报告状态",
-        "download": "下载",
-        "word_report": "Word 报告",
-        "pdf_report": "PDF 报告",
-        "json_status": "JSON 状态",
-        "json_data": "JSON 数据",
-        "summary": "分析摘要",
-        "summary_label": "快速预览",
-        "summary_placeholder": "分析完成后显示摘要...",
-        "hint_upload": "请先上传视频",
-        "hint_consensus": "运行分析后自动生成",
-        "uploaded": "✅ 视频已上传",
-        "work_dir": "工作目录",
-        "frames_extracted": "已提取 {n} 个关键帧",
-        "audio_extracted": "✅ 音频已提取",
-        "audio_failed": "⚠️ 音频提取失败",
-        "please_upload": "❌ 请先上传视频",
-        "analysis_failed": "分析失败",
-        "visual_init": "⏳ 加载 CLIP 模型...",
-        "visual_analyzing": "🔄 视觉分析中...",
-        "audio_init": "⏳ 加载 CLAP 模型...",
-        "audio_analyzing": "🔄 音频分析中...",
-        "asr_init": "⏳ 加载 Whisper 模型...",
-        "asr_analyzing": "🔄 语音识别中...",
-        "yolo_init": "⏳ 加载 YOLO11 模型...",
-        "yolo_analyzing": "🔄 目标检测中...",
-        "consensus_calc": "🔄 计算共识...",
-        "report_gen_word": "🔄 生成 Word 报告...",
-        "report_gen_pdf": "🔄 转换为 PDF...",
-        "done": "✅ 完成!",
-        "report_done": "✅ 报告已生成",
-        "pdf_failed": "⚠️ PDF 转换失败",
-        "json_exported": "✅ JSON 已导出",
-        "summary_title": "=== 分析摘要 ===",
-        "footer": "Video Style Analysis | SOTA 2025/2026 | PyTorch + HuggingFace",
-        # Results formatting
-        "visual_result": "# 📹 视觉分析结果",
-        "audio_result": "# 🎵 音频分析结果",
-        "asr_result": "# 🎤 语音分析结果",
-        "yolo_result": "# 🔍 目标检测结果",
-        "consensus_result": "# 🎯 共识分析结果",
-        "duration": "时长",
-        "sampled_frames": "采样帧数",
-        "cam_angle": "镜头角度",
-        "hue": "色调",
-        "saturation": "饱和度",
-        "brightness": "亮度",
-        "contrast": "对比度",
-        "cct": "色温",
-        "cuts": "剪辑数",
-        "avg_shot_len": "平均镜头时长",
-        "transition": "转场类型",
-        "bpm": "BPM",
-        "bgm_style": "BGM 风格",
-        "main_mood": "主要情绪",
-        "speech_ratio": "语音比例",
-        "word_count": "词数",
-        "speech_rate": "语速",
-        "pace": "节奏",
-        "env_type": "环境类型",
-        "unique_obj": "检测物体",
-        "confidence": "置信度",
-    },
-    "en": {
-        "title": "🎬 Video Style Analysis",
-        "subtitle": "SOTA 2025/2026 | PyTorch + HuggingFace",
-        "tech_stack": "CLIP (Scene) | CLAP (Audio) | HuBERT (Emotion) | Whisper (ASR) | YOLO11 (Detection)",
-        "tab_upload": "📤 Upload & Preview",
-        "tab_analysis": "🔬 Analysis",
-        "tab_results": "📊 Results & Export",
-        "upload_video": "Upload Video",
-        "upload_label": "Select video file (mp4, avi, mov, mkv)",
-        "upload_status": "Status",
-        "video_preview": "Video Preview",
-        "audio_preview": "Audio Preview",
-        "audio_label": "Extracted Audio",
-        "frame_preview": "Key Frames Preview",
-        "frame_label": "Uniformly Sampled Frames",
-        "settings": "Settings",
-        "asr_lang": "ASR Language",
-        "ui_lang": "UI Language",
-        "analysis_ctrl": "Analysis Control",
-        "run_all": "🎯 Analyze All",
-        "gen_report": "📄 Generate Report",
-        "export_json": "💾 Export JSON",
-        "step_exec": "Step by Step",
-        "visual_btn": "📹 Visual",
-        "audio_btn": "🎵 Audio",
-        "asr_btn": "🎤 ASR",
-        "yolo_btn": "🔍 YOLO",
-        "consensus_btn": "🎯 Consensus",
-        "tab_visual": "📹 Visual",
-        "tab_audio": "🎵 Audio",
-        "tab_asr": "🎤 ASR",
-        "tab_yolo": "🔍 YOLO",
-        "tab_consensus": "🎯 Consensus",
-        "report_gen": "Report Generation",
-        "report_status": "Report Status",
-        "download": "Download",
-        "word_report": "Word Report",
-        "pdf_report": "PDF Report",
-        "json_status": "JSON Status",
-        "json_data": "JSON Data",
-        "summary": "Analysis Summary",
-        "summary_label": "Quick Preview",
-        "summary_placeholder": "Summary will appear after analysis...",
-        "hint_upload": "Please upload a video first",
-        "hint_consensus": "Generated after analysis",
-        "uploaded": "✅ Video uploaded",
-        "work_dir": "Work directory",
-        "frames_extracted": "Extracted {n} key frames",
-        "audio_extracted": "✅ Audio extracted",
-        "audio_failed": "⚠️ Audio extraction failed",
-        "please_upload": "❌ Please upload a video first",
-        "analysis_failed": "Analysis failed",
-        "visual_init": "⏳ Loading CLIP model...",
-        "visual_analyzing": "🔄 Visual analysis...",
-        "audio_init": "⏳ Loading CLAP model...",
-        "audio_analyzing": "🔄 Audio analysis...",
-        "asr_init": "⏳ Loading Whisper model...",
-        "asr_analyzing": "🔄 Speech recognition...",
-        "yolo_init": "⏳ Loading YOLO11 model...",
-        "yolo_analyzing": "🔄 Object detection...",
-        "consensus_calc": "🔄 Calculating consensus...",
-        "report_gen_word": "🔄 Generating Word report...",
-        "report_gen_pdf": "🔄 Converting to PDF...",
-        "done": "✅ Done!",
-        "report_done": "✅ Report generated",
-        "pdf_failed": "⚠️ PDF conversion failed",
-        "json_exported": "✅ JSON exported",
-        "summary_title": "=== Analysis Summary ===",
-        "footer": "Video Style Analysis | SOTA 2025/2026 | PyTorch + HuggingFace",
-        "visual_result": "# 📹 Visual Analysis Results",
-        "audio_result": "# 🎵 Audio Analysis Results",
-        "asr_result": "# 🎤 Speech Analysis Results",
-        "yolo_result": "# 🔍 Object Detection Results",
-        "consensus_result": "# 🎯 Consensus Analysis Results",
-        "duration": "Duration",
-        "sampled_frames": "Sampled frames",
-        "cam_angle": "Camera angle",
-        "hue": "Hue",
-        "saturation": "Saturation",
-        "brightness": "Brightness",
-        "contrast": "Contrast",
-        "cct": "CCT",
-        "cuts": "Cuts",
-        "avg_shot_len": "Avg shot length",
-        "transition": "Transition",
-        "bpm": "BPM",
-        "bgm_style": "BGM style",
-        "main_mood": "Main mood",
-        "speech_ratio": "Speech ratio",
-        "word_count": "Word count",
-        "speech_rate": "Speech rate",
-        "pace": "Pace",
-        "env_type": "Environment",
-        "unique_obj": "Objects detected",
-        "confidence": "confidence",
-    }
-}
-
-CURRENT_LANG = "zh"
-
-def t(key: str) -> str:
-    return I18N.get(CURRENT_LANG, I18N["zh"]).get(key, key)
-
-def set_lang(lang: str):
-    global CURRENT_LANG
-    CURRENT_LANG = lang if lang in I18N else "zh"
 
 # =============================================================================
 # 全局状态
@@ -315,148 +105,126 @@ def convert_docx_to_pdf(docx_path: str) -> Optional[str]:
     return None
 
 
-def format_distribution(detail: Dict) -> str:
-    if not detail or 'distribution' not in detail:
-        return ""
-    lines = []
-    for item in detail.get('distribution', [])[:5]:
-        value = item.get('value', 'Unknown')
-        count = item.get('count', 0)
-        pct = item.get('percentage', 0)
-        lines.append(f"  • {value}: {count}× ({pct}%)")
-    return "\n".join(lines)
-
-
 # =============================================================================
 # 结果格式化
 # =============================================================================
-def format_visual_output(output: VisualOutput) -> str:
+def format_visual(output: VisualOutput) -> str:
     if not output or not output.success:
-        return f"❌ {t('analysis_failed')}"
-    
-    lines = [
-        f"{t('visual_result')}\n",
-        f"**{t('duration')}**: {output.duration:.2f}s | **FPS**: {output.fps:.1f} | **{t('sampled_frames')}**: {output.sampled_frames}\n",
-        f"### 📷 镜头\n**{t('cam_angle')}**: {output.camera_angle}",
-        format_distribution(output.camera_angle_detail),
-        f"\n### 🎨 色彩\n**{t('hue')}**: {output.hue_family} | **{t('saturation')}**: {output.saturation_band} | **{t('brightness')}**: {output.brightness_band}",
-    ]
-    if output.cct_mean:
-        lines.append(f"**{t('cct')}**: {output.cct_mean:.0f}K")
-    
-    lines.extend([
-        f"\n### ✂️ 剪辑\n**{t('cuts')}**: {output.cuts} | **{t('avg_shot_len')}**: {output.avg_shot_length:.2f}s | **{t('transition')}**: {output.transition_type}",
-        f"\n### 🏠 场景 (CLIP)",
-    ])
-    
-    for scene in output.scene_categories[:3]:
-        label = scene.get('label', 'Unknown')
-        prob = scene.get('probability', 0)
-        lines.append(f"  • {label}: {prob:.1%}")
-    
-    return "\n".join(lines)
+        return "❌ 分析失败"
+    return f"""### 📹 视觉分析结果
+
+**基本信息**: 时长 {output.duration:.2f}s | FPS {output.fps:.1f} | 采样 {output.sampled_frames} 帧
+
+**镜头**: {output.camera_angle} | 焦距 {output.focal_length_tendency}
+
+**色彩**: {output.hue_family} | 饱和度 {output.saturation_band} | 亮度 {output.brightness_band} | 对比度 {output.contrast}
+
+**色温**: {output.cct_mean:.0f}K
+
+**剪辑**: {output.cuts} 次剪辑 | 平均镜头 {output.avg_shot_length:.2f}s | {output.transition_type}
+
+**场景 (CLIP)**:
+{chr(10).join([f"  • {s.get('label', '?')}: {s.get('probability', 0):.1%}" for s in output.scene_categories[:3]])}
+"""
 
 
-def format_audio_output(output: AudioOutput) -> str:
+def format_audio(output: AudioOutput) -> str:
     if not output or not output.success:
-        return f"❌ {t('analysis_failed')}"
-    
-    lines = [
-        f"{t('audio_result')}\n",
-        f"### 🎵 节奏\n**{t('bpm')}**: {output.tempo_bpm:.1f} | **节拍**: {output.num_beats} | **打击乐比例**: {output.percussive_ratio:.2f}",
-        f"\n### 🎸 BGM\n**{t('bgm_style')}**: {output.bgm_style} ({output.bgm_style_confidence:.1%})",
-        f"\n### 😊 情绪\n**{t('main_mood')}**: {output.mood} ({output.mood_confidence:.1%})",
-        f"\n### 其他\n**调式**: {output.key_signature} | **{t('speech_ratio')}**: {output.speech_ratio:.2f}",
-    ]
-    
+        return "❌ 分析失败"
     instruments = output.instruments.get('detected_instruments', [])
-    if instruments:
-        lines.append(f"**乐器**: {', '.join(instruments)}")
-    
-    return "\n".join(lines)
+    return f"""### 🎵 音频分析结果 (CLAP)
+
+**节奏**: BPM {output.tempo_bpm:.1f} | 节拍 {output.num_beats} | 打击乐比例 {output.percussive_ratio:.2f}
+
+**BGM 风格**: {output.bgm_style} ({output.bgm_style_confidence:.1%})
+
+**情绪**: {output.mood} ({output.mood_confidence:.1%})
+
+**调式**: {output.key_signature} | 语音比例 {output.speech_ratio:.2f}
+
+**乐器**: {', '.join(instruments) if instruments else 'N/A'}
+"""
 
 
-def format_asr_output(output: ASROutput) -> str:
+def format_asr(output: ASROutput) -> str:
     if not output or not output.success:
-        return f"❌ {t('analysis_failed')}"
+        return "❌ 分析失败"
     
-    lines = [
-        f"{t('asr_result')}\n",
-        f"### 📝 统计\n**{t('word_count')}**: {output.num_words} | **{t('speech_rate')}**: {output.words_per_minute:.1f} wpm | **{t('pace')}**: {output.pace}",
-    ]
-    
-    if output.catchphrases:
-        lines.append(f"\n### 🔁 口头禅\n" + " | ".join([f'"{p}"' for p in output.catchphrases[:5]]))
-    
-    if output.prosody:
-        lines.append(f"\n### 🎼 韵律\n**音高**: {output.prosody.get('mean_pitch_hz', 0):.1f} Hz | **风格**: {output.prosody.get('prosody_style', 'N/A')}")
-    
+    text_preview = output.text[:300] + '...' if len(output.text) > 300 else output.text
+    emotion_str = ""
     if output.emotion:
-        lines.append(f"\n### 😊 情感\n**主要**: {output.emotion.get('dominant_emotion', 'N/A')} ({output.emotion.get('confidence', 0):.1%})")
+        emotion_str = f"\n**情感**: {output.emotion.get('dominant_emotion', 'N/A')} ({output.emotion.get('confidence', 0):.1%})"
     
-    if output.text:
-        text_preview = output.text[:300] + ('...' if len(output.text) > 300 else '')
-        lines.append(f"\n### 📜 转录\n```\n{text_preview}\n```")
+    prosody_str = ""
+    if output.prosody:
+        prosody_str = f"\n**韵律**: 音高 {output.prosody.get('mean_pitch_hz', 0):.1f}Hz | {output.prosody.get('prosody_style', 'N/A')}"
     
-    return "\n".join(lines)
+    return f"""### 🎤 语音分析结果 (Whisper + HuBERT)
+
+**统计**: {output.num_words} 词 | {output.words_per_minute:.1f} wpm | {output.pace}
+
+**口头禅**: {', '.join([f'"{p}"' for p in output.catchphrases[:5]]) if output.catchphrases else 'N/A'}
+{prosody_str}{emotion_str}
+
+**转录**:
+```
+{text_preview}
+```
+"""
 
 
-def format_yolo_output(output: YOLOOutput) -> str:
+def format_yolo(output: YOLOOutput) -> str:
     if not output or not output.success:
-        return f"❌ {t('analysis_failed')}"
+        return "❌ 分析失败"
     
     detection = output.detection
     environment = output.environment
-    
-    lines = [
-        f"{t('yolo_result')}\n",
-        f"### 🏠 环境\n**{t('env_type')}**: {environment.get('environment_type', 'N/A')} | **风格**: {environment.get('cooking_style', 'N/A')}",
-        f"\n### 📊 统计\n**{t('unique_obj')}**: {detection.get('unique_objects', 0)} 种 | **总检测**: {detection.get('total_detections', 0)} 次",
-        f"\n### 🎯 检测到的物体",
-    ]
-    
     object_counts = detection.get('object_counts', {})
-    avg_conf = detection.get('avg_confidence', {})
-    for obj, count in sorted(object_counts.items(), key=lambda x: x[1], reverse=True)[:10]:
-        conf = avg_conf.get(obj, 0)
-        lines.append(f"  • **{obj}**: {count}× ({t('confidence')}: {conf:.1%})")
     
-    return "\n".join(lines)
+    objects_str = "\n".join([f"  • {obj}: {cnt}×" for obj, cnt in sorted(object_counts.items(), key=lambda x: x[1], reverse=True)[:10]])
+    
+    return f"""### 🔍 目标检测结果 (YOLO11)
+
+**环境**: {environment.get('environment_type', 'N/A')} | {environment.get('cooking_style', 'N/A')}
+
+**统计**: {detection.get('unique_objects', 0)} 种物体 | {detection.get('total_detections', 0)} 次检测
+
+**检测到的物体**:
+{objects_str}
+"""
 
 
-def format_consensus_output(output: ConsensusOutput) -> str:
+def format_consensus(output: ConsensusOutput) -> str:
     if not output or not output.success:
-        return f"❌ {t('analysis_failed')}"
+        return "❌ 分析失败"
     
-    lines = [
-        f"{t('consensus_result')}\n",
-        f"### 📷 镜头\n**角度**: {output.camera_angle} | **焦距**: {output.focal_length_tendency} | **运动**: {output.camera_motion}",
-        f"\n### 🎨 色彩\n**{t('hue')}**: {output.hue_family} | **{t('saturation')}**: {output.saturation} | **{t('brightness')}**: {output.brightness}",
-    ]
-    if output.cct:
-        lines.append(f"**{t('cct')}**: {output.cct:.0f}K")
+    cct_str = f"{output.cct:.0f}K" if output.cct else "N/A"
+    shot_str = f"{output.avg_shot_length:.2f}s" if output.avg_shot_length else "N/A"
+    bpm_str = f"{output.tempo_bpm:.1f}" if output.tempo_bpm else "N/A"
     
-    lines.append(f"\n### ✂️ 剪辑\n**{t('transition')}**: {output.transition_type}")
-    if output.avg_shot_length:
-        lines.append(f"**{t('avg_shot_len')}**: {output.avg_shot_length:.2f}s")
-    
-    lines.append(f"\n### 🎵 音频\n**{t('bgm_style')}**: {output.bgm_style} | **情绪**: {output.bgm_mood}")
-    if output.tempo_bpm:
-        lines.append(f"**{t('bpm')}**: {output.tempo_bpm:.1f}")
-    
-    if output.yolo_available:
-        lines.append(f"\n### 🔍 YOLO\n**环境**: {output.yolo_environment} | **风格**: {output.yolo_style}")
-    
-    return "\n".join(lines)
+    return f"""### 🎯 共识分析结果
+
+**镜头**: {output.camera_angle} | 焦距 {output.focal_length_tendency} | 运动 {output.camera_motion}
+
+**色彩**: {output.hue_family} | 饱和度 {output.saturation} | 亮度 {output.brightness}
+
+**色温**: {cct_str}
+
+**剪辑**: {output.transition_type} | 平均 {shot_str}
+
+**音频**: {output.bgm_style} | 情绪 {output.bgm_mood} | BPM {bpm_str}
+
+**场景**: {output.scene_category}
+"""
 
 
 # =============================================================================
 # 处理函数
 # =============================================================================
 def upload_video(video_file):
-    """处理视频上传 - 不返回到 video_input 避免刷新循环"""
+    """处理视频上传"""
     if video_file is None:
-        return "", None, []
+        return "请上传视频", None, []
     
     STATE.reset()
     STATE.work_dir = Path(tempfile.mkdtemp(prefix="video_analysis_"))
@@ -470,404 +238,306 @@ def upload_video(video_file):
     STATE.audio_path = extract_audio_from_video(STATE.video_path, STATE.work_dir)
     frame_paths = extract_frames_for_gallery(STATE.video_path, STATE.work_dir, num_frames=12)
     
-    status = f"{t('uploaded')}: {video_path.name}\n"
-    status += f"{t('work_dir')}: {STATE.work_dir}\n"
-    status += t('frames_extracted').format(n=len(frame_paths)) + "\n"
-    status += t('audio_extracted') if STATE.audio_path else t('audio_failed')
+    status = f"✅ 已上传: {video_path.name}\n"
+    status += f"📁 工作目录: {STATE.work_dir}\n"
+    status += f"🖼️ 提取 {len(frame_paths)} 帧\n"
+    status += "🎵 音频已提取" if STATE.audio_path else "⚠️ 音频提取失败"
     
     audio_path = str(STATE.audio_path) if STATE.audio_path else None
-    
     return status, audio_path, frame_paths
 
 
-def run_visual_analysis(progress=gr.Progress()) -> Tuple[str, str]:
+def run_visual(progress=gr.Progress()):
     if STATE.video_path is None:
-        return t('please_upload'), None
+        return "❌ 请先上传视频", None
     
-    progress(0.1, desc=t('visual_init'))
+    progress(0.1, desc="⏳ 加载 CLIP...")
+    step = VisualAnalysisStep()
+    input_data = VideoInput(video_path=STATE.video_path, work_dir=STATE.work_dir, frame_mode="edge")
     
-    try:
-        step = VisualAnalysisStep()
-        input_data = VideoInput(video_path=STATE.video_path, work_dir=STATE.work_dir, frame_mode="edge")
-        
-        progress(0.4, desc=t('visual_analyzing'))
-        STATE.visual_output = step.run(input_data)
-        
-        progress(1.0, desc=t('done'))
-        result = format_visual_output(STATE.visual_output)
-        contact_sheet = STATE.visual_output.contact_sheet if STATE.visual_output else None
-        
-        return result, contact_sheet
-    except Exception as e:
-        return f"❌ {t('analysis_failed')}: {str(e)}", None
+    progress(0.4, desc="🔄 视觉分析中...")
+    STATE.visual_output = step.run(input_data)
+    
+    progress(1.0, desc="✅ 完成")
+    contact = STATE.visual_output.contact_sheet if STATE.visual_output else None
+    return format_visual(STATE.visual_output), contact
 
 
-def run_audio_analysis(progress=gr.Progress()) -> str:
+def run_audio(progress=gr.Progress()):
     if STATE.audio_path is None:
-        return t('please_upload')
+        return "❌ 请先上传视频"
     
-    progress(0.1, desc=t('audio_init'))
+    progress(0.1, desc="⏳ 加载 CLAP...")
+    step = AudioAnalysisStep()
+    input_data = AudioInput(audio_path=STATE.audio_path)
     
-    try:
-        step = AudioAnalysisStep()
-        input_data = AudioInput(audio_path=STATE.audio_path)
-        
-        progress(0.4, desc=t('audio_analyzing'))
-        STATE.audio_output = step.run(input_data)
-        
-        progress(1.0, desc=t('done'))
-        return format_audio_output(STATE.audio_output)
-    except Exception as e:
-        return f"❌ {t('analysis_failed')}: {str(e)}"
+    progress(0.4, desc="🔄 音频分析中...")
+    STATE.audio_output = step.run(input_data)
+    
+    progress(1.0, desc="✅ 完成")
+    return format_audio(STATE.audio_output)
 
 
-def run_asr_analysis(language: str, progress=gr.Progress()) -> str:
+def run_asr(language: str, progress=gr.Progress()):
     if STATE.audio_path is None:
-        return t('please_upload')
+        return "❌ 请先上传视频"
     
-    progress(0.1, desc=t('asr_init'))
+    progress(0.1, desc="⏳ 加载 Whisper...")
+    step = ASRAnalysisStep()
+    input_data = ASRInput(audio_path=STATE.audio_path, language=language,
+                          model_size="large-v3-turbo", enable_prosody=True, enable_emotion=True)
     
-    try:
-        step = ASRAnalysisStep()
-        input_data = ASRInput(
-            audio_path=STATE.audio_path,
-            language=language,
-            model_size="large-v3-turbo",
-            enable_prosody=True,
-            enable_emotion=True
-        )
-        
-        progress(0.4, desc=t('asr_analyzing'))
-        STATE.asr_output = step.run(input_data)
-        
-        progress(1.0, desc=t('done'))
-        return format_asr_output(STATE.asr_output)
-    except Exception as e:
-        return f"❌ {t('analysis_failed')}: {str(e)}"
+    progress(0.4, desc="🔄 语音识别中...")
+    STATE.asr_output = step.run(input_data)
+    
+    progress(1.0, desc="✅ 完成")
+    return format_asr(STATE.asr_output)
 
 
-def run_yolo_analysis(progress=gr.Progress()) -> str:
+def run_yolo(progress=gr.Progress()):
     if STATE.video_path is None:
-        return t('please_upload')
+        return "❌ 请先上传视频"
     
-    progress(0.1, desc=t('yolo_init'))
+    progress(0.1, desc="⏳ 加载 YOLO11...")
+    step = YOLOAnalysisStep()
+    input_data = YOLOInput(video_path=STATE.video_path, target_frames=36,
+                           enable_colors=True, enable_materials=True)
     
-    try:
-        step = YOLOAnalysisStep()
-        input_data = YOLOInput(video_path=STATE.video_path, target_frames=36,
-                               enable_colors=True, enable_materials=True)
-        
-        progress(0.4, desc=t('yolo_analyzing'))
-        STATE.yolo_output = step.run(input_data)
-        
-        progress(1.0, desc=t('done'))
-        return format_yolo_output(STATE.yolo_output)
-    except Exception as e:
-        return f"❌ {t('analysis_failed')}: {str(e)}"
+    progress(0.4, desc="🔄 目标检测中...")
+    STATE.yolo_output = step.run(input_data)
+    
+    progress(1.0, desc="✅ 完成")
+    return format_yolo(STATE.yolo_output)
 
 
-def run_consensus_analysis() -> str:
+def run_consensus():
+    """运行共识分析 - 需要先运行其他分析"""
+    if STATE.visual_output is None and STATE.audio_output is None:
+        return "❌ 请先运行视觉或音频分析"
+    
     metrics = VideoMetrics(path=str(STATE.video_path) if STATE.video_path else "")
     metrics.visual = STATE.visual_output
     metrics.audio = STATE.audio_output
     metrics.asr = STATE.asr_output
     metrics.yolo = STATE.yolo_output
     
-    try:
-        step = ConsensusStep()
-        input_data = ConsensusInput(video_metrics=[metrics])
-        STATE.consensus_output = step.run(input_data)
-        return format_consensus_output(STATE.consensus_output)
-    except Exception as e:
-        return f"❌ {t('analysis_failed')}: {str(e)}"
+    step = ConsensusStep()
+    input_data = ConsensusInput(video_metrics=[metrics])
+    STATE.consensus_output = step.run(input_data)
+    
+    return format_consensus(STATE.consensus_output)
 
 
-def run_all_analysis(language: str, progress=gr.Progress()) -> Tuple:
-    progress(0.05, desc=t('visual_init'))
-    visual_result, contact_sheet = run_visual_analysis()
+def run_all(language: str, progress=gr.Progress()):
+    """一键分析全部"""
+    progress(0.1, desc="📹 视觉分析...")
+    visual_result, contact = run_visual()
     
-    progress(0.25, desc=t('audio_init'))
-    audio_result = run_audio_analysis()
+    progress(0.3, desc="🎵 音频分析...")
+    audio_result = run_audio()
     
-    progress(0.45, desc=t('asr_init'))
-    asr_result = run_asr_analysis(language)
+    progress(0.5, desc="🎤 语音分析...")
+    asr_result = run_asr(language)
     
-    progress(0.65, desc=t('yolo_init'))
-    yolo_result = run_yolo_analysis()
+    progress(0.7, desc="🔍 目标检测...")
+    yolo_result = run_yolo()
     
-    progress(0.85, desc=t('consensus_calc'))
-    consensus_result = run_consensus_analysis()
+    progress(0.9, desc="🎯 共识计算...")
+    consensus_result = run_consensus()
     
-    progress(1.0, desc=t('done'))
+    progress(1.0, desc="✅ 全部完成")
     
-    summary_lines = [t('summary_title') + "\n"]
+    # 生成摘要
+    summary = "=== 分析摘要 ===\n\n"
     if STATE.visual_output:
-        summary_lines.append(f"📹 {t('cam_angle')}: {STATE.visual_output.camera_angle}")
-        summary_lines.append(f"🎨 {t('hue')}: {STATE.visual_output.hue_family}")
-        summary_lines.append(f"✂️ {t('cuts')}: {STATE.visual_output.cuts}")
+        summary += f"📹 镜头: {STATE.visual_output.camera_angle}\n"
+        summary += f"🎨 色彩: {STATE.visual_output.hue_family}\n"
+        summary += f"✂️ 剪辑: {STATE.visual_output.cuts} 次\n"
     if STATE.audio_output:
-        summary_lines.append(f"🎵 {t('bpm')}: {STATE.audio_output.tempo_bpm:.1f}")
-        summary_lines.append(f"🎸 {t('bgm_style')}: {STATE.audio_output.bgm_style}")
+        summary += f"🎵 BPM: {STATE.audio_output.tempo_bpm:.1f}\n"
+        summary += f"🎸 BGM: {STATE.audio_output.bgm_style}\n"
     if STATE.asr_output:
-        summary_lines.append(f"🎤 {t('speech_rate')}: {STATE.asr_output.words_per_minute:.1f} wpm")
+        summary += f"🎤 语速: {STATE.asr_output.words_per_minute:.1f} wpm\n"
     if STATE.yolo_output:
-        obj_count = STATE.yolo_output.detection.get('unique_objects', 0)
-        summary_lines.append(f"🔍 {t('unique_obj')}: {obj_count}")
+        summary += f"🔍 物体: {STATE.yolo_output.detection.get('unique_objects', 0)} 种\n"
     
-    summary = "\n".join(summary_lines)
-    return visual_result, contact_sheet, audio_result, asr_result, yolo_result, consensus_result, summary
+    return visual_result, contact, audio_result, asr_result, yolo_result, consensus_result, summary
 
 
-def generate_report(progress=gr.Progress()) -> Tuple[str, str, str]:
+def gen_report(progress=gr.Progress()):
+    """生成报告"""
     if STATE.video_path is None:
-        return t('please_upload'), None, None
+        return "❌ 请先上传视频并运行分析", None, None
     
-    progress(0.2, desc=t('report_gen_word'))
+    if STATE.visual_output is None and STATE.audio_output is None:
+        return "❌ 请先运行分析", None, None
     
-    try:
-        metrics = VideoMetrics(path=str(STATE.video_path))
-        metrics.visual = STATE.visual_output
-        metrics.audio = STATE.audio_output
-        metrics.asr = STATE.asr_output
-        metrics.yolo = STATE.yolo_output
-        
-        if STATE.consensus_output is None:
-            run_consensus_analysis()
-        
-        metrics_dict = metrics.to_dict()
-        if STATE.visual_output:
-            metrics_dict["visual"]["available"] = True
-        if STATE.audio_output:
-            metrics_dict["audio"]["available"] = True
-        if STATE.asr_output:
-            metrics_dict["asr"]["available"] = True
-        if STATE.yolo_output:
-            metrics_dict["yolo"]["available"] = True
-        
-        consensus_dict = STATE.consensus_output.to_dict() if STATE.consensus_output else {}
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_path = STATE.work_dir / f"report_{timestamp}.docx"
-        
-        generate_word_report(
-            video_metrics=[metrics_dict],
-            consensus=consensus_dict,
-            output_path=str(report_path),
-            show_screenshots=True
-        )
-        
-        STATE.report_path = str(report_path)
-        
-        progress(0.6, desc=t('report_gen_pdf'))
-        STATE.pdf_path = convert_docx_to_pdf(STATE.report_path)
-        
-        progress(1.0, desc=t('done'))
-        
-        status = f"{t('report_done')}\n"
-        status += f"📄 Word: {report_path.name}\n"
-        status += f"📕 PDF: {Path(STATE.pdf_path).name}" if STATE.pdf_path else t('pdf_failed')
-        
-        return status, STATE.report_path, STATE.pdf_path
-    except Exception as e:
-        return f"❌ {t('analysis_failed')}: {str(e)}", None, None
+    progress(0.2, desc="📄 生成 Word 报告...")
+    
+    metrics = VideoMetrics(path=str(STATE.video_path))
+    metrics.visual = STATE.visual_output
+    metrics.audio = STATE.audio_output
+    metrics.asr = STATE.asr_output
+    metrics.yolo = STATE.yolo_output
+    
+    if STATE.consensus_output is None:
+        run_consensus()
+    
+    metrics_dict = metrics.to_dict()
+    consensus_dict = STATE.consensus_output.to_dict() if STATE.consensus_output else {}
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_path = STATE.work_dir / f"report_{timestamp}.docx"
+    
+    generate_word_report(
+        video_metrics=[metrics_dict],
+        consensus=consensus_dict,
+        output_path=str(report_path),
+        show_screenshots=True
+    )
+    
+    STATE.report_path = str(report_path)
+    
+    progress(0.7, desc="📕 转换 PDF...")
+    STATE.pdf_path = convert_docx_to_pdf(STATE.report_path)
+    
+    progress(1.0, desc="✅ 完成")
+    
+    status = f"✅ 报告已生成\n📄 {report_path.name}"
+    if STATE.pdf_path:
+        status += f"\n📕 {Path(STATE.pdf_path).name}"
+    else:
+        status += "\n⚠️ PDF 转换需要 libreoffice"
+    
+    # 返回文件路径供下载
+    return status, STATE.report_path, STATE.pdf_path
 
 
-def export_json() -> Tuple[str, str]:
+def export_json():
+    """导出 JSON"""
     if STATE.video_path is None:
-        return t('please_upload'), None
+        return "❌ 请先运行分析", None
     
-    try:
-        data = {
-            "timestamp": datetime.now().isoformat(),
-            "video_path": str(STATE.video_path),
-            "visual": STATE.visual_output.to_dict() if STATE.visual_output else None,
-            "audio": STATE.audio_output.to_dict() if STATE.audio_output else None,
-            "asr": STATE.asr_output.to_dict() if STATE.asr_output else None,
-            "yolo": STATE.yolo_output.to_dict() if STATE.yolo_output else None,
-            "consensus": STATE.consensus_output.to_dict() if STATE.consensus_output else None,
-        }
-        
-        json_path = STATE.work_dir / f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False, default=str)
-        
-        return f"{t('json_exported')}: {json_path.name}", str(json_path)
-    except Exception as e:
-        return f"❌ {t('analysis_failed')}: {str(e)}", None
+    data = {
+        "timestamp": datetime.now().isoformat(),
+        "video_path": str(STATE.video_path),
+        "visual": STATE.visual_output.to_dict() if STATE.visual_output else None,
+        "audio": STATE.audio_output.to_dict() if STATE.audio_output else None,
+        "asr": STATE.asr_output.to_dict() if STATE.asr_output else None,
+        "yolo": STATE.yolo_output.to_dict() if STATE.yolo_output else None,
+        "consensus": STATE.consensus_output.to_dict() if STATE.consensus_output else None,
+    }
+    
+    json_path = STATE.work_dir / f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+    
+    return f"✅ 已导出: {json_path.name}", str(json_path)
 
 
 # =============================================================================
-# Gradio 界面 - 使用顶级 Tabs 布局
+# Gradio 界面
 # =============================================================================
-CUSTOM_CSS = """
-.main-container { max-width: 1400px; margin: auto; padding: 20px; }
-.result-box { min-height: 400px; }
-.step-btn { min-width: 100px; }
-.upload-box { border: 2px dashed #ccc; border-radius: 10px; padding: 20px; }
-"""
-
 def create_ui():
-    with gr.Blocks(title="Video Style Analysis") as demo:
+    with gr.Blocks(
+        title="Video Style Analysis",
+        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")
+    ) as demo:
         
-        # 标题栏
+        gr.Markdown("""
+# 🎬 视频风格分析系统
+**SOTA 2025/2026** | CLIP (场景) | CLAP (音频) | HuBERT (情感) | Whisper (ASR) | YOLO11 (检测)
+        """)
+        
         with gr.Row():
-            with gr.Column(scale=8):
-                gr.Markdown(f"# {t('title')}\n**{t('subtitle')}** | {t('tech_stack')}")
-            with gr.Column(scale=2):
-                lang_btn = gr.Radio(
-                    choices=[("中文", "zh"), ("English", "en")],
-                    value="zh",
-                    label=t('ui_lang'),
-                    interactive=True
+            # ========== 左侧: 上传和设置 ==========
+            with gr.Column(scale=1):
+                gr.Markdown("### 📤 上传视频")
+                video_input = gr.Video(label="选择视频", height=250)
+                upload_status = gr.Textbox(label="状态", lines=4, interactive=False)
+                
+                gr.Markdown("### ⚙️ 设置")
+                language_select = gr.Dropdown(
+                    choices=[("English", "en"), ("中文", "zh"), ("日本語", "ja"), ("Auto", "auto")],
+                    value="en",
+                    label="ASR 语言"
                 )
-        
-        # 主要内容 - 顶级 Tabs
-        with gr.Tabs() as main_tabs:
-            
-            # ========== Tab 1: 上传与预览 ==========
-            with gr.TabItem(t('tab_upload'), id="upload"):
-                with gr.Row():
-                    # 左侧：上传
-                    with gr.Column(scale=1):
-                        gr.Markdown(f"### {t('upload_video')}")
-                        video_input = gr.Video(
-                            label=t('upload_label'),
-                            height=350
-                        )
-                        upload_status = gr.Textbox(
-                            label=t('upload_status'),
-                            lines=4,
-                            interactive=False
-                        )
-                        
-                        gr.Markdown(f"### {t('settings')}")
-                        language_select = gr.Dropdown(
-                            choices=[("English", "en"), ("中文", "zh"), ("日本語", "ja"), ("한국어", "ko"), ("Auto", "auto")],
-                            value="en",
-                            label=t('asr_lang')
-                        )
-                    
-                    # 右侧：预览
-                    with gr.Column(scale=2):
-                        with gr.Tabs():
-                            with gr.TabItem(t('audio_preview')):
-                                audio_player = gr.Audio(
-                                    label=t('audio_label'),
-                                    type="filepath"
-                                )
-                            
-                            with gr.TabItem(t('frame_preview')):
-                                frame_gallery = gr.Gallery(
-                                    label=t('frame_label'),
-                                    columns=4,
-                                    rows=3,
-                                    height=400,
-                                    object_fit="contain"
-                                )
-            
-            # ========== Tab 2: 分析 ==========
-            with gr.TabItem(t('tab_analysis'), id="analysis"):
-                # 控制栏
-                gr.Markdown(f"### {t('analysis_ctrl')}")
-                with gr.Row():
-                    run_all_btn = gr.Button(t('run_all'), variant="primary", size="lg", scale=2)
-                    run_visual_btn = gr.Button(t('visual_btn'), variant="secondary")
-                    run_audio_btn = gr.Button(t('audio_btn'), variant="secondary")
-                    run_asr_btn = gr.Button(t('asr_btn'), variant="secondary")
-                    run_yolo_btn = gr.Button(t('yolo_btn'), variant="secondary")
-                    run_consensus_btn = gr.Button(t('consensus_btn'), variant="secondary")
                 
-                gr.Markdown("---")
+                gr.Markdown("### 🎵 音频")
+                audio_player = gr.Audio(label="提取的音频", type="filepath")
                 
-                # 结果展示 - 子 Tabs
-                with gr.Tabs() as result_tabs:
-                    with gr.TabItem(t('tab_visual'), id="visual"):
-                        with gr.Row():
-                            with gr.Column(scale=2):
-                                visual_result = gr.Markdown(value=f"*{t('hint_upload')}*")
-                            with gr.Column(scale=1):
-                                contact_sheet_img = gr.Image(label="Contact Sheet", height=300)
-                    
-                    with gr.TabItem(t('tab_audio'), id="audio"):
-                        audio_result = gr.Markdown(value=f"*{t('hint_upload')}*")
-                    
-                    with gr.TabItem(t('tab_asr'), id="asr"):
-                        asr_result = gr.Markdown(value=f"*{t('hint_upload')}*")
-                    
-                    with gr.TabItem(t('tab_yolo'), id="yolo"):
-                        yolo_result = gr.Markdown(value=f"*{t('hint_upload')}*")
-                    
-                    with gr.TabItem(t('tab_consensus'), id="consensus"):
-                        consensus_result = gr.Markdown(value=f"*{t('hint_consensus')}*")
+                gr.Markdown("### 🖼️ 关键帧")
+                frame_gallery = gr.Gallery(label="关键帧", columns=3, height=200, object_fit="contain")
             
-            # ========== Tab 3: 结果与导出 ==========
-            with gr.TabItem(t('tab_results'), id="results"):
+            # ========== 中间: 分析结果 ==========
+            with gr.Column(scale=2):
+                gr.Markdown("### 🚀 分析控制")
                 with gr.Row():
-                    # 摘要
-                    with gr.Column(scale=2):
-                        gr.Markdown(f"### {t('summary')}")
-                        summary_box = gr.Textbox(
-                            label=t('summary_label'),
-                            lines=15,
-                            interactive=False,
-                            placeholder=t('summary_placeholder')
-                        )
+                    run_all_btn = gr.Button("🎯 一键分析全部", variant="primary", size="lg")
+                
+                with gr.Row():
+                    run_visual_btn = gr.Button("📹 视觉")
+                    run_audio_btn = gr.Button("🎵 音频")
+                    run_asr_btn = gr.Button("🎤 语音")
+                    run_yolo_btn = gr.Button("🔍 检测")
+                    run_consensus_btn = gr.Button("🎯 共识")
+                
+                with gr.Tabs():
+                    with gr.Tab("📹 视觉"):
+                        visual_result = gr.Markdown("*请先上传视频*")
+                        contact_img = gr.Image(label="Contact Sheet", height=200)
                     
-                    # 报告生成
-                    with gr.Column(scale=1):
-                        gr.Markdown(f"### {t('report_gen')}")
-                        
-                        with gr.Row():
-                            generate_report_btn = gr.Button(t('gen_report'), variant="primary", size="lg")
-                            export_json_btn = gr.Button(t('export_json'), size="lg")
-                        
-                        report_status = gr.Textbox(label=t('report_status'), lines=4, interactive=False)
-                        
-                        gr.Markdown(f"### {t('download')}")
-                        report_download = gr.File(label=t('word_report'))
-                        pdf_download = gr.File(label=t('pdf_report'))
-                        
-                        gr.Markdown("---")
-                        json_status = gr.Textbox(label=t('json_status'), lines=2, interactive=False)
-                        json_download = gr.File(label=t('json_data'))
+                    with gr.Tab("🎵 音频"):
+                        audio_result = gr.Markdown("*请先上传视频*")
+                    
+                    with gr.Tab("🎤 语音"):
+                        asr_result = gr.Markdown("*请先上传视频*")
+                    
+                    with gr.Tab("🔍 检测"):
+                        yolo_result = gr.Markdown("*请先上传视频*")
+                    
+                    with gr.Tab("🎯 共识"):
+                        consensus_result = gr.Markdown("*请先运行分析*")
+            
+            # ========== 右侧: 报告和导出 ==========
+            with gr.Column(scale=1):
+                gr.Markdown("### 📊 报告与导出")
+                
+                with gr.Row():
+                    gen_report_btn = gr.Button("📄 生成报告", variant="secondary")
+                    export_json_btn = gr.Button("💾 导出 JSON")
+                
+                report_status = gr.Textbox(label="报告状态", lines=3, interactive=False)
+                
+                gr.Markdown("### 📥 下载")
+                report_file = gr.File(label="Word 报告 (.docx)")
+                pdf_file = gr.File(label="PDF 报告 (.pdf)")
+                json_file = gr.File(label="JSON 数据")
+                
+                json_status = gr.Textbox(label="JSON 状态", lines=2, interactive=False)
+                
+                gr.Markdown("### 📋 摘要")
+                summary_box = gr.Textbox(label="分析摘要", lines=12, interactive=False)
         
-        # 页脚
-        gr.Markdown(f"---\n{t('footer')}")
+        gr.Markdown("---\n**Video Style Analysis** | SOTA 2025/2026")
         
         # ========== 事件绑定 ==========
+        video_input.change(fn=upload_video, inputs=[video_input],
+                          outputs=[upload_status, audio_player, frame_gallery])
         
-        # 上传视频 - 不返回到 video_input
-        video_input.change(
-            fn=upload_video,
-            inputs=[video_input],
-            outputs=[upload_status, audio_player, frame_gallery]
-        )
+        run_visual_btn.click(fn=run_visual, outputs=[visual_result, contact_img])
+        run_audio_btn.click(fn=run_audio, outputs=[audio_result])
+        run_asr_btn.click(fn=run_asr, inputs=[language_select], outputs=[asr_result])
+        run_yolo_btn.click(fn=run_yolo, outputs=[yolo_result])
+        run_consensus_btn.click(fn=run_consensus, outputs=[consensus_result])
         
-        # 分析按钮
-        run_visual_btn.click(fn=run_visual_analysis, outputs=[visual_result, contact_sheet_img])
-        run_audio_btn.click(fn=run_audio_analysis, outputs=[audio_result])
-        run_asr_btn.click(fn=run_asr_analysis, inputs=[language_select], outputs=[asr_result])
-        run_yolo_btn.click(fn=run_yolo_analysis, outputs=[yolo_result])
-        run_consensus_btn.click(fn=run_consensus_analysis, outputs=[consensus_result])
+        run_all_btn.click(fn=run_all, inputs=[language_select],
+                         outputs=[visual_result, contact_img, audio_result, asr_result, 
+                                  yolo_result, consensus_result, summary_box])
         
-        # 一键分析
-        run_all_btn.click(
-            fn=run_all_analysis,
-            inputs=[language_select],
-            outputs=[visual_result, contact_sheet_img, audio_result, asr_result, yolo_result, consensus_result, summary_box]
-        )
-        
-        # 报告和导出
-        generate_report_btn.click(fn=generate_report, outputs=[report_status, report_download, pdf_download])
-        export_json_btn.click(fn=export_json, outputs=[json_status, json_download])
-        
-        # 语言切换 (简化版 - 刷新页面后生效)
-        def switch_lang(lang):
-            set_lang(lang)
-            return lang
-        
-        lang_btn.change(fn=switch_lang, inputs=[lang_btn], outputs=[lang_btn])
+        gen_report_btn.click(fn=gen_report, outputs=[report_status, report_file, pdf_file])
+        export_json_btn.click(fn=export_json, outputs=[json_status, json_file])
     
     return demo
 
@@ -875,7 +545,7 @@ def create_ui():
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Video Style Analysis Web UI")
-    parser.add_argument("--port", type=int, default=8088, help="Server port (default: 8088)")
+    parser.add_argument("--port", type=int, default=8088, help="Server port")
     parser.add_argument("--share", action="store_true", help="Create public link")
     args = parser.parse_args()
     
@@ -884,7 +554,5 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=args.port,
         share=args.share,
-        show_error=True,
-        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate"),
-        css=CUSTOM_CSS
+        show_error=True
     )
