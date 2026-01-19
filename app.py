@@ -1020,16 +1020,14 @@ def create_ui():
                         upload_status = gr.Textbox(
                             label="Upload Status",
                             lines=3,
-                            interactive=False,
-                            info="File info and processing status"
+                            interactive=False
                         )
                         
                         gr.Markdown("### ⚙️ Analysis Settings")
                         language_select = gr.Dropdown(
                             choices=[("English", "en"), ("中文", "zh"), ("日本語", "ja"), ("한국어", "ko"), ("Auto-detect", "auto")],
                             value="en",
-                            label="Speech Recognition Language",
-                            info="Language for transcription and analysis"
+                            label="Speech Recognition Language"
                         )
                     
                     # Right: Preview Section
@@ -1071,13 +1069,13 @@ def create_ui():
                     )
                 
                 gr.Markdown("**Individual Analysis Modules:**")
-                with gr.Row(elem_classes=["button-row"]):
-                    run_visual_btn = gr.Button("📹 Visual Analysis", size="sm", info="Camera, color, scene detection")
-                    run_audio_btn = gr.Button("🎵 Audio Analysis", size="sm", info="BGM, tempo, mood detection")
-                    run_asr_btn = gr.Button("🎤 Speech (ASR)", size="sm", info="Transcription & prosody")
-                    run_yolo_btn = gr.Button("🔍 Object (YOLO)", size="sm", info="Object & material detection")
-                    run_ai_btn = gr.Button("🤖 AI Detection", size="sm", info="Deepfake & AIGC detection")
-                    run_consensus_btn = gr.Button("📊 Summary", size="sm", info="Aggregate all results")
+                with gr.Row():
+                    run_visual_btn = gr.Button("📹 Visual", size="sm")
+                    run_audio_btn = gr.Button("🎵 Audio", size="sm")
+                    run_asr_btn = gr.Button("🎤 ASR", size="sm")
+                    run_yolo_btn = gr.Button("🔍 YOLO", size="sm")
+                    run_ai_btn = gr.Button("🤖 AI Detect", size="sm")
+                    run_consensus_btn = gr.Button("📊 Summary", size="sm")
                 
                 gr.Markdown("---")
                 
@@ -1177,8 +1175,7 @@ def create_ui():
                 summary_box = gr.Textbox(
                     label="Analysis Overview",
                     lines=12,
-                    interactive=False,
-                    info="Key metrics at a glance"
+                    interactive=False
                 )
             
             # ========== Tab 4: Configuration ==========
@@ -1189,46 +1186,42 @@ def create_ui():
                 with gr.Row():
                     with gr.Column():
                         gr.Markdown("#### 📹 Visual Analysis")
+                        gr.Markdown("*More frames = slower but more accurate*")
                         cfg_visual_frames = gr.Slider(
                             10, 200, value=cfg.visual.target_frames, step=10,
-                            label="Target Frames",
-                            info="Number of frames to sample for analysis (more = slower but more accurate)"
+                            label="Target Frames"
                         )
                         cfg_visual_threshold = gr.Slider(
                             10, 50, value=cfg.visual.scene_threshold, step=1,
-                            label="Scene Detection Threshold",
-                            info="Lower = more sensitive scene change detection"
+                            label="Scene Threshold (lower = more sensitive)"
                         )
                         
                         gr.Markdown("#### 🔍 YOLO Object Detection")
+                        gr.Markdown("*n=fastest, l=most accurate*")
                         cfg_yolo_model = gr.Dropdown(
                             choices=["yolo11n.pt", "yolo11s.pt", "yolo11m.pt", "yolo11l.pt"],
                             value=cfg.yolo.model_name,
-                            label="YOLO Model",
-                            info="n=fastest, l=most accurate"
+                            label="YOLO Model"
                         )
                         cfg_yolo_conf = gr.Slider(
                             0.1, 0.9, value=cfg.yolo.confidence_threshold, step=0.05,
-                            label="Confidence Threshold",
-                            info="Minimum confidence to report detection"
+                            label="Confidence Threshold"
                         )
                         cfg_yolo_frames = gr.Slider(
                             10, 100, value=cfg.yolo.target_frames, step=5,
-                            label="Frames to Analyze",
-                            info="More frames = better coverage"
+                            label="Frames to Analyze"
                         )
                         
                         gr.Markdown("#### 🎤 Speech Recognition (ASR)")
+                        gr.Markdown("*large-v3-turbo = best, tiny = fastest*")
                         cfg_asr_model = gr.Dropdown(
                             choices=["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"],
                             value=cfg.asr.whisper_model,
-                            label="Whisper Model",
-                            info="large-v3-turbo = best quality, tiny = fastest"
+                            label="Whisper Model"
                         )
                         cfg_asr_beam = gr.Slider(
                             1, 10, value=cfg.asr.whisper_beam_size, step=1,
-                            label="Beam Size",
-                            info="Higher = better quality but slower"
+                            label="Beam Size (higher = better)"
                         )
                     
                     with gr.Column():
@@ -1237,46 +1230,38 @@ def create_ui():
                         
                         cfg_ai_enabled = gr.Checkbox(
                             value=cfg.ai_detection.enabled,
-                            label="Enable AI Detection",
-                            info="Master switch for all AI detection"
+                            label="Enable AI Detection"
                         )
                         
                         gr.Markdown("**Detection Models:**")
                         cfg_ai_deepfake = gr.Checkbox(
                             value=cfg.ai_detection.use_deepfake,
-                            label="⭐ DeepFake-v2 (ViT, 92% acc)",
-                            info="HuggingFace model for face deepfakes"
+                            label="⭐ DeepFake-v2 (ViT, 92% acc)"
                         )
                         cfg_ai_clip = gr.Checkbox(
                             value=cfg.ai_detection.use_clip,
-                            label="⭐ CLIP Zero-Shot",
-                            info="Detect synthetic images using CLIP"
+                            label="⭐ CLIP Zero-Shot"
                         )
                         cfg_ai_temporal = gr.Checkbox(
                             value=cfg.ai_detection.use_temporal,
-                            label="✅ CLIP-Temporal Analysis",
-                            info="Semantic consistency between frames"
+                            label="✅ CLIP-Temporal Analysis"
                         )
                         cfg_ai_aigc = gr.Checkbox(
                             value=cfg.ai_detection.use_aigc,
-                            label="⭐ AIGC Detector",
-                            info="Detects Stable Diffusion/DALL-E/Midjourney"
+                            label="⭐ AIGC Detector (SD/DALL-E/MJ)"
                         )
                         cfg_ai_audio = gr.Checkbox(
                             value=cfg.ai_detection.use_audio_deepfake,
-                            label="⭐ Audio Deepfake",
-                            info="Detects voice cloning & TTS"
+                            label="⭐ Audio Deepfake"
                         )
                         cfg_ai_face = gr.Checkbox(
                             value=cfg.ai_detection.use_face_detection,
-                            label="Face Analysis",
-                            info="No-face ratio analysis"
+                            label="Face Analysis"
                         )
                         
                         cfg_ai_threshold = gr.Slider(
                             0.1, 0.9, value=cfg.ai_detection.fake_threshold, step=0.05,
-                            label="AI Detection Threshold",
-                            info="Score above this = flagged as AI"
+                            label="AI Threshold (above = flagged)"
                         )
                         
                         gr.Markdown("#### ⚖️ Ensemble Weights")
