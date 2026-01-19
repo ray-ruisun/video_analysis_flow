@@ -305,22 +305,66 @@ def format_visual(output: VisualOutput) -> str:
         for s in output.scene_categories[:5]
     ])
     
-    return f"""## 📹 {t('visual_results')}
+    # CCT interpretation
+    cct = output.cct_mean
+    if cct < 3500:
+        cct_desc = "Warm (incandescent/sunset)"
+    elif cct < 5500:
+        cct_desc = "Neutral (daylight balanced)"
+    else:
+        cct_desc = "Cool (overcast/blue hour)"
+    
+    # Cut rate interpretation
+    cut_rate = output.cuts / max(output.duration, 1) * 60  # cuts per minute
+    if cut_rate > 30:
+        pace_desc = "Very fast editing"
+    elif cut_rate > 15:
+        pace_desc = "Dynamic editing"
+    elif cut_rate > 5:
+        pace_desc = "Moderate pacing"
+    else:
+        pace_desc = "Slow, contemplative"
+    
+    return f"""## 📹 Visual Analysis Results
 
-| Duration | FPS | Frames |
-|:---:|:---:|:---:|
-| **{output.duration:.2f}s** | **{output.fps:.1f}** | **{output.sampled_frames}** |
+### 📊 Video Info
 
-| Angle | Focal | Hue | Saturation |
-|:---:|:---:|:---:|:---:|
-| **{output.camera_angle}** | **{output.focal_length_tendency}** | **{output.hue_family}** | **{output.saturation_band}** |
+| Metric | Value | Description |
+|:-------|:-----:|:------------|
+| **Duration** | {output.duration:.2f}s | Total video length |
+| **FPS** | {output.fps:.1f} | Frames per second |
+| **Frames Analyzed** | {output.sampled_frames} | Sample size for analysis |
 
-| Brightness | Contrast | CCT | Cuts |
-|:---:|:---:|:---:|:---:|
-| **{output.brightness_band}** | **{output.contrast}** | **{output.cct_mean:.0f}K** | **{output.cuts}** |
+### 📷 Camera & Composition
 
-### 🏠 Scene (CLIP)
+| Metric | Value | Description |
+|:-------|:------|:------------|
+| **Camera Angle** | {output.camera_angle} | Viewer perspective (eye-level, overhead, low) |
+| **Focal Length** | {output.focal_length_tendency} | Wide-angle, normal, or telephoto |
+
+### 🎨 Color Analysis
+
+| Metric | Value | Description |
+|:-------|:------|:------------|
+| **Dominant Hue** | {output.hue_family} | Primary color family |
+| **Saturation** | {output.saturation_band} | Color intensity (vivid/muted) |
+| **Brightness** | {output.brightness_band} | Light/dark overall |
+| **Contrast** | {output.contrast} | Dynamic range |
+| **Color Temp (CCT)** | {output.cct_mean:.0f}K | {cct_desc} |
+
+### ✂️ Editing Pace
+
+| Metric | Value | Description |
+|:-------|:-----:|:------------|
+| **Total Cuts** | {output.cuts} | Scene transitions detected |
+| **Cuts/Minute** | {cut_rate:.1f} | {pace_desc} |
+
+### 🏠 Scene Classification (CLIP)
+*Top detected scene types:*
 {scenes}
+
+---
+*Scene classification powered by CLIP (openai/clip-vit-large-patch14)*
 """
 
 
@@ -331,17 +375,33 @@ def format_audio(output: AudioOutput) -> str:
     instruments = output.instruments.get('detected_instruments', [])
     inst_str = ", ".join(instruments[:5]) if instruments else "N/A"
     
-    return f"""## 🎵 {t('audio_results')}
+    # Add explanations based on values
+    tempo_desc = "Fast-paced" if output.tempo_bpm > 120 else "Medium tempo" if output.tempo_bpm > 80 else "Slow, relaxed"
+    percussive_desc = "Heavy drums" if output.percussive_ratio > 0.5 else "Moderate beats" if output.percussive_ratio > 0.2 else "Light rhythm"
+    
+    return f"""## 🎵 Audio Analysis Results
 
-| BPM | Beats | Percussive |
-|:---:|:---:|:---:|
-| **{output.tempo_bpm:.1f}** | **{output.num_beats}** | **{output.percussive_ratio:.2f}** |
+### 💓 Rhythm & Tempo
 
-| BGM Style | Mood | Key |
-|:---:|:---:|:---:|
-| **{output.bgm_style}** | **{output.mood}** | **{output.key_signature}** |
+| Metric | Value | Interpretation |
+|:-------|:-----:|:---------------|
+| **BPM** | {output.tempo_bpm:.1f} | {tempo_desc} |
+| **Beat Count** | {output.num_beats} | Total rhythmic beats detected |
+| **Percussive Ratio** | {output.percussive_ratio:.2f} | {percussive_desc} |
 
-**Instruments**: {inst_str}
+### 🎸 Music Classification (CLAP Model)
+
+| Metric | Value | Description |
+|:-------|:------|:------------|
+| **BGM Style** | {output.bgm_style} | Genre/style of background music |
+| **Mood** | {output.mood} | Emotional tone of the audio |
+| **Key** | {output.key_signature} | Musical key (if detected) |
+
+### 🎹 Instruments Detected
+{inst_str}
+
+---
+*Analysis powered by CLAP (laion/larger_clap_music_and_speech)*
 """
 
 
@@ -349,27 +409,68 @@ def format_asr(output: ASROutput) -> str:
     if not output or not output.success:
         return f"❌ {t('analysis_failed')}"
     
-    text_preview = output.text[:400] + '...' if len(output.text) > 400 else output.text
+    text_preview = output.text[:500] + '...' if len(output.text) > 500 else output.text
     
-    emotion_str = ""
+    # WPM interpretation
+    wpm = output.words_per_minute
+    if wpm > 160:
+        pace_desc = "Very fast (energetic/urgent)"
+    elif wpm > 130:
+        pace_desc = "Fast (conversational+)"
+    elif wpm > 100:
+        pace_desc = "Normal conversation"
+    elif wpm > 60:
+        pace_desc = "Slow (deliberate/clear)"
+    else:
+        pace_desc = "Very slow (emphatic)"
+    
+    # Emotion section
+    emotion_section = ""
     if output.emotion:
-        emotion_str = f"\n**Emotion**: {output.emotion.get('dominant_emotion', 'N/A')} ({output.emotion.get('confidence', 0):.1%})"
+        emo = output.emotion.get('dominant_emotion', 'N/A')
+        conf = output.emotion.get('confidence', 0)
+        emotion_section = f"""
+### 🎭 Emotion Analysis (HuBERT Model)
+| Detected Emotion | Confidence |
+|:----------------:|:----------:|
+| **{emo}** | {conf:.1%} |
+"""
     
-    prosody_str = ""
+    # Prosody section
+    prosody_section = ""
     if output.prosody:
-        prosody_str = f"\n**Prosody**: {output.prosody.get('mean_pitch_hz', 0):.1f}Hz, {output.prosody.get('prosody_style', 'N/A')}"
+        pitch = output.prosody.get('mean_pitch_hz', 0)
+        style = output.prosody.get('prosody_style', 'N/A')
+        intensity = output.prosody.get('mean_intensity', 0)
+        prosody_section = f"""
+### 📊 Prosody Analysis (Librosa)
+| Metric | Value | Description |
+|:-------|:-----:|:------------|
+| **Pitch** | {pitch:.1f} Hz | Average fundamental frequency |
+| **Style** | {style} | Speaking manner |
+| **Intensity** | {intensity:.1f} dB | Volume level |
+"""
     
-    return f"""## 🎤 {t('asr_results')}
+    return f"""## 🎤 Speech Analysis Results
 
-| Words | WPM | Pace |
-|:---:|:---:|:---:|
-| **{output.num_words}** | **{output.words_per_minute:.1f}** | **{output.pace}** |
-{prosody_str}{emotion_str}
+### 🗣️ Speech Rate
 
-### Transcript
+| Metric | Value | Interpretation |
+|:-------|:-----:|:---------------|
+| **Total Words** | {output.num_words} | Words transcribed |
+| **Words/Min (WPM)** | {wpm:.1f} | {pace_desc} |
+| **Pace Category** | {output.pace} | Overall speaking speed |
+
+{emotion_section}
+{prosody_section}
+
+### 📝 Transcript (Whisper large-v3-turbo)
 ```
 {text_preview}
 ```
+
+---
+*ASR powered by faster-whisper, Emotion by HuBERT*
 """
 
 
@@ -383,22 +484,62 @@ def format_yolo(output: YOLOOutput) -> str:
     
     objects_str = "\n".join([
         f"| {obj} | {cnt} |"
-        for obj, cnt in sorted(object_counts.items(), key=lambda x: x[1], reverse=True)[:8]
+        for obj, cnt in sorted(object_counts.items(), key=lambda x: x[1], reverse=True)[:10]
     ])
     
-    return f"""## 🔍 {t('yolo_results')}
+    # Colors section
+    colors_section = ""
+    if output.colors:
+        colors = output.colors
+        if isinstance(colors, dict):
+            dom_colors = colors.get('dominant_colors', colors.get('all_colors', []))
+            if dom_colors and isinstance(dom_colors, list):
+                colors_str = ", ".join(dom_colors[:5]) if dom_colors else "N/A"
+                colors_section = f"""
+### 🎨 Object Colors
+**Dominant Colors**: {colors_str}
+"""
+    
+    # Materials section
+    materials_section = ""
+    if output.materials:
+        mats = output.materials
+        if isinstance(mats, dict):
+            dom_mats = mats.get('dominant_materials', mats.get('all_materials', []))
+            if dom_mats and isinstance(dom_mats, list):
+                mats_str = ", ".join(dom_mats[:5]) if dom_mats else "N/A"
+                materials_section = f"""
+### 🧱 Materials Detected
+**Dominant Materials**: {mats_str}
+"""
+    
+    return f"""## 🔍 Object Detection Results
 
-| Environment | Style |
-|:---:|:---:|
-| **{environment.get('environment_type', 'N/A')}** | **{environment.get('cooking_style', 'N/A')}** |
+### 🏠 Environment Classification
 
-| Unique Objects | Total Detections |
-|:---:|:---:|
-| **{detection.get('unique_objects', 0)}** | **{detection.get('total_detections', 0)}** |
+| Metric | Value | Description |
+|:-------|:------|:------------|
+| **Environment Type** | {environment.get('environment_type', 'N/A')} | Primary scene category |
+| **Activity Style** | {environment.get('cooking_style', 'N/A')} | Detected activity type |
+
+### 📦 Object Detection Statistics
+
+| Metric | Value | Description |
+|:-------|:-----:|:------------|
+| **Unique Objects** | {detection.get('unique_objects', 0)} | Different object types found |
+| **Total Detections** | {detection.get('total_detections', 0)} | Total instances across frames |
+
+### 📋 Detected Objects (Top 10)
 
 | Object | Count |
-|:---|:---:|
+|:-------|:-----:|
 {objects_str}
+
+{colors_section}
+{materials_section}
+
+---
+*Detection powered by YOLO11 (ultralytics)*
 """
 
 
@@ -442,27 +583,61 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
     audio_score = getattr(output, 'audio_deepfake_score', 0.0)
     audio_available = getattr(output, 'audio_deepfake_available', False)
     
-    return f"""## 🤖 {t('ai_results')}
+    # Get weights from analysis details
+    weights = output.analysis_details.get("weights", {})
+    deepfake_w = weights.get("deepfake", 0.30)
+    clip_w = weights.get("clip", 0.20)
+    temporal_w = weights.get("temporal", 0.15)
+    aigc_w = weights.get("aigc", 0.20)
+    audio_w = weights.get("audio_deepfake", 0.10)
+    face_w = weights.get("face", 0.05)
+    
+    # Calculate weighted contribution
+    def weighted_contrib(score, weight, available):
+        if not available:
+            return "—"
+        contrib = score * weight
+        return f"{contrib:.1%}"
+    
+    return f"""## 🤖 AI Detection Results
 
-### {emoji} {t('verdict')}: **{output.verdict}**
-### {t('confidence')}: **{output.confidence:.1%}**
+### {emoji} Verdict: **{output.verdict}**
+### Confidence: **{output.confidence:.1%}** (weighted average)
 
-| Model | Score | Status |
-|:---|:---:|:---:|
-| 🎭 DeepFake-v2 (ViT) | **{output.deepfake_score:.1%}** | {'✅' if output.deepfake_available else '❌'} |
-| 🔍 CLIP (Synthetic) | **{output.clip_synthetic_score:.1%}** | {'✅' if output.clip_available else '❌'} |
-| ⏱️ CLIP-Temporal | **{output.temporal_score:.1%}** | ✅ |
-| 🎨 AIGC (SD/DALL-E) | **{aigc_score:.1%}** | {'✅' if aigc_available else '❌'} |
-| 🔊 Audio Deepfake | **{audio_score:.1%}** | {'✅' if audio_available else '❌'} |
+---
 
-| Face Analysis | Value |
-|:---|:---:|
-| Faces Detected | **{output.faces_detected}** |
-| Frames with Faces | **{output.frames_with_faces}/{output.frames_analyzed}** |
-| No-Face Ratio | **{output.no_face_ratio:.1%}** |
-| Temporal Anomalies | **{output.temporal_anomalies}** |
+### 📊 Detection Models & Weights
 
-**Models Used**: {models_str}
+| Model | Weight | Score | Contribution | Status | Description |
+|:------|:------:|:-----:|:------------:|:------:|:------------|
+| 🎭 **DeepFake-v2** | `{deepfake_w:.0%}` | {output.deepfake_score:.1%} | {weighted_contrib(output.deepfake_score, deepfake_w, output.deepfake_available)} | {'✅' if output.deepfake_available else '❌'} | *HuggingFace ViT model (92% acc), detects face swaps* |
+| 🔍 **CLIP Synthetic** | `{clip_w:.0%}` | {output.clip_synthetic_score:.1%} | {weighted_contrib(output.clip_synthetic_score, clip_w, output.clip_available)} | {'✅' if output.clip_available else '❌'} | *Zero-shot detection using CLIP embeddings* |
+| ⏱️ **CLIP-Temporal** | `{temporal_w:.0%}` | {output.temporal_score:.1%} | {weighted_contrib(output.temporal_score, temporal_w, True)} | ✅ | *Semantic consistency between frames (CLIP-based)* |
+| 🎨 **AIGC Detector** | `{aigc_w:.0%}` | {aigc_score:.1%} | {weighted_contrib(aigc_score, aigc_w, aigc_available)} | {'✅' if aigc_available else '❌'} | *Detects Stable Diffusion, DALL-E, Midjourney* |
+| 🔊 **Audio Deepfake** | `{audio_w:.0%}` | {audio_score:.1%} | {weighted_contrib(audio_score, audio_w, audio_available)} | {'✅' if audio_available else '❌'} | *Detects voice cloning & TTS synthesis* |
+| 👤 **Face Analysis** | `{face_w:.0%}` | {output.no_face_ratio:.1%} | — | ✅ | *No-face ratio analysis (>90% suspicious)* |
+
+---
+
+### 👤 Face Detection Details
+
+| Metric | Value | Explanation |
+|:-------|:-----:|:------------|
+| **Faces Detected** | {output.faces_detected} | Total faces found across all frames |
+| **Frames with Faces** | {output.frames_with_faces}/{output.frames_analyzed} | Ratio of frames containing faces |
+| **No-Face Ratio** | {output.no_face_ratio:.1%} | Higher = more suspicious for face videos |
+| **Temporal Anomalies** | {output.temporal_anomalies} | Sudden changes in frame consistency |
+
+---
+
+### ℹ️ How Scoring Works
+
+- **Final Confidence** = Σ (Model Score × Weight) / Σ Weights
+- Models with ⭐ use HuggingFace pretrained models (higher reliability)
+- Models with ✅ use computed features (good reliability)
+- **Verdict Thresholds**: Real <40% | Suspicious 40-70% | AI-Generated ≥70%
+
+**Active Models**: {models_str}
 """
 
 
@@ -748,8 +923,8 @@ def update_config(
     visual_frames, visual_threshold,
     yolo_model, yolo_conf, yolo_frames,
     asr_model, asr_beam,
-    ai_enabled, ai_deepfake, ai_clip, ai_temporal, ai_face,
-    ai_threshold, ai_deepfake_weight, ai_clip_weight, ai_temporal_weight, ai_face_weight
+    ai_enabled, ai_deepfake, ai_clip, ai_temporal, ai_aigc, ai_audio, ai_face,
+    ai_threshold, ai_deepfake_weight, ai_clip_weight, ai_temporal_weight, ai_aigc_weight, ai_audio_weight, ai_face_weight
 ):
     """Update configuration from UI controls"""
     # Visual
@@ -770,14 +945,25 @@ def update_config(
     STATE.config.ai_detection.use_deepfake = ai_deepfake
     STATE.config.ai_detection.use_clip = ai_clip
     STATE.config.ai_detection.use_temporal = ai_temporal
+    STATE.config.ai_detection.use_aigc = ai_aigc
+    STATE.config.ai_detection.use_audio_deepfake = ai_audio
     STATE.config.ai_detection.use_face_detection = ai_face
     STATE.config.ai_detection.fake_threshold = float(ai_threshold)
     STATE.config.ai_detection.deepfake_weight = float(ai_deepfake_weight)
     STATE.config.ai_detection.clip_weight = float(ai_clip_weight)
     STATE.config.ai_detection.temporal_weight = float(ai_temporal_weight)
+    STATE.config.ai_detection.aigc_weight = float(ai_aigc_weight)
+    STATE.config.ai_detection.audio_deepfake_weight = float(ai_audio_weight)
     STATE.config.ai_detection.face_weight = float(ai_face_weight)
     
-    return "✅ Configuration updated"
+    # Calculate total weight and show warning if not ~1.0
+    total_weight = ai_deepfake_weight + ai_clip_weight + ai_temporal_weight + ai_aigc_weight + ai_audio_weight + ai_face_weight
+    
+    status = "✅ Configuration updated"
+    if abs(total_weight - 1.0) > 0.1:
+        status += f"\n⚠️ Warning: Total weight = {total_weight:.2f} (recommended: ~1.0)"
+    
+    return status
 
 
 def switch_language(lang: str):
@@ -800,10 +986,48 @@ def switch_language(lang: str):
 # =============================================================================
 # Gradio UI
 # =============================================================================
+# Custom CSS for better UI
+CUSTOM_CSS = """
+/* Better video preview scaling */
+.video-preview video {
+    max-height: 300px !important;
+    object-fit: contain !important;
+}
+
+/* Gallery improvements */
+.gallery-container {
+    min-height: 200px !important;
+}
+
+/* Tooltip styling */
+.tooltip-icon {
+    cursor: help;
+    color: #666;
+}
+
+/* Better button spacing */
+.button-row button {
+    margin: 2px !important;
+}
+
+/* Responsive video container */
+.responsive-video {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16/9;
+}
+
+/* Portrait video support */
+.portrait-video {
+    aspect-ratio: 9/16;
+    max-height: 400px;
+}
+"""
+
 def create_ui():
     cfg = STATE.config
     
-    with gr.Blocks(title="Video Style Analysis") as demo:
+    with gr.Blocks(title="Video Style Analysis", css=CUSTOM_CSS) as demo:
         
         # Header
         header_md = gr.Markdown(f"# {t('title')}\n**{t('subtitle')}** | {t('models')}")
@@ -817,121 +1041,316 @@ def create_ui():
         gr.Markdown("---")
         
         with gr.Tabs():
-            # ========== Tab 1: Analysis ==========
-            with gr.Tab("🎬 Analysis"):
+            # ========== Tab 1: Upload & Preview ==========
+            with gr.Tab("📤 Upload & Preview", id="tab_upload"):
                 with gr.Row():
-                    # Left: Upload
-                    with gr.Column(scale=1, min_width=280):
-                        gr.Markdown(f"### {t('upload_section')}")
-                        video_input = gr.Video(label=t('select_video'), height=180)
-                        upload_status = gr.Textbox(label=t('status'), lines=4, interactive=False)
+                    # Left: Upload Section (wider)
+                    with gr.Column(scale=2, min_width=400):
+                        gr.Markdown("### 📤 Video Upload")
+                        gr.Markdown("*Supports MP4, AVI, MOV, MKV. Max 500MB.*")
                         
-                        gr.Markdown(f"### {t('settings_section')}")
-                        language_select = gr.Dropdown(
-                            choices=[("English", "en"), ("中文", "zh"), ("日本語", "ja"), ("Auto", "auto")],
-                            value="en", label=t('asr_language')
+                        video_input = gr.Video(
+                            label="Select Video File",
+                            height=320,
+                            elem_classes=["video-preview"]
                         )
                         
-                        gr.Markdown(f"### {t('preview_section')}")
-                        audio_player = gr.Audio(label=t('audio_preview'), type="filepath")
-                        frame_gallery = gr.Gallery(label=t('keyframes'), columns=3, height=120)
+                        upload_status = gr.Textbox(
+                            label="Upload Status",
+                            lines=3,
+                            interactive=False,
+                            info="File info and processing status"
+                        )
+                        
+                        gr.Markdown("### ⚙️ Analysis Settings")
+                        language_select = gr.Dropdown(
+                            choices=[("English", "en"), ("中文", "zh"), ("日本語", "ja"), ("한국어", "ko"), ("Auto-detect", "auto")],
+                            value="en",
+                            label="Speech Recognition Language",
+                            info="Language for transcription and analysis"
+                        )
                     
-                    # Middle: Results
-                    with gr.Column(scale=2, min_width=500):
-                        gr.Markdown(f"### {t('control_section')}")
+                    # Right: Preview Section
+                    with gr.Column(scale=3, min_width=500):
+                        gr.Markdown("### 🎬 Media Preview")
                         
                         with gr.Row():
-                            run_all_btn = gr.Button(t('analyze_all'), variant="primary", size="lg", scale=2)
+                            with gr.Column(scale=1):
+                                gr.Markdown("**🔊 Extracted Audio**")
+                                gr.Markdown("*Audio track separated from video*", elem_classes=["text-muted"])
+                                audio_player = gr.Audio(
+                                    label="Audio Preview",
+                                    type="filepath",
+                                    show_download_button=True
+                                )
                         
-                        with gr.Row():
-                            run_visual_btn = gr.Button(t('btn_visual'), size="sm")
-                            run_audio_btn = gr.Button(t('btn_audio'), size="sm")
-                            run_asr_btn = gr.Button(t('btn_asr'), size="sm")
-                            run_yolo_btn = gr.Button(t('btn_yolo'), size="sm")
-                            run_ai_btn = gr.Button(t('btn_ai_detect'), size="sm")
-                            run_consensus_btn = gr.Button(t('btn_consensus'), size="sm")
-                        
-                        with gr.Tabs():
-                            with gr.Tab(t('tab_visual')):
-                                visual_result = gr.Markdown(f"*{t('upload_first')}*")
-                                contact_img = gr.Image(label="Contact Sheet", height=120)
-                            
-                            with gr.Tab(t('tab_audio')):
-                                audio_result = gr.Markdown(f"*{t('upload_first')}*")
-                            
-                            with gr.Tab(t('tab_asr')):
-                                asr_result = gr.Markdown(f"*{t('upload_first')}*")
-                            
-                            with gr.Tab(t('tab_yolo')):
-                                yolo_result = gr.Markdown(f"*{t('upload_first')}*")
-                            
-                            with gr.Tab(t('tab_ai')):
-                                ai_result = gr.Markdown(f"*{t('upload_first')}*")
-                            
-                            with gr.Tab(t('tab_summary')):
-                                consensus_result = gr.Markdown(f"*{t('run_analysis_first')}*")
-                    
-                    # Right: Export
-                    with gr.Column(scale=1, min_width=250):
-                        gr.Markdown(f"### {t('export_section')}")
-                        
-                        with gr.Row():
-                            gen_report_btn = gr.Button(t('gen_report'), size="sm")
-                            export_json_btn = gr.Button(t('export_json'), size="sm")
-                        
-                        report_status = gr.Textbox(label=t('report_status'), lines=2, interactive=False)
-                        report_file = gr.File(label=t('word_report'))
-                        pdf_file = gr.File(label=t('pdf_report'))
-                        
-                        json_status = gr.Textbox(label=t('json_status'), lines=1, interactive=False)
-                        json_file = gr.File(label=t('json_data'))
-                        
-                        gr.Markdown("---")
-                        summary_box = gr.Textbox(label=t('quick_summary'), lines=10, interactive=False)
+                        gr.Markdown("### 🖼️ Key Frames Gallery")
+                        gr.Markdown("*Click any frame to view full size*")
+                        frame_gallery = gr.Gallery(
+                            label="Extracted Key Frames",
+                            columns=4,
+                            rows=3,
+                            height=280,
+                            object_fit="contain",
+                            allow_preview=True,
+                            preview=True,
+                            show_download_button=True
+                        )
             
-            # ========== Tab 2: Configuration ==========
-            with gr.Tab("⚙️ Configuration"):
+            # ========== Tab 2: Run Analysis ==========
+            with gr.Tab("🚀 Run Analysis", id="tab_analysis"):
+                gr.Markdown("### 🎯 Analysis Controls")
+                gr.Markdown("*Click 'Analyze All' for complete analysis, or run individual modules*")
+                
+                with gr.Row():
+                    run_all_btn = gr.Button(
+                        "🎯 Analyze All (Recommended)",
+                        variant="primary",
+                        size="lg",
+                        scale=2
+                    )
+                
+                gr.Markdown("**Individual Analysis Modules:**")
+                with gr.Row(elem_classes=["button-row"]):
+                    run_visual_btn = gr.Button("📹 Visual Analysis", size="sm", info="Camera, color, scene detection")
+                    run_audio_btn = gr.Button("🎵 Audio Analysis", size="sm", info="BGM, tempo, mood detection")
+                    run_asr_btn = gr.Button("🎤 Speech (ASR)", size="sm", info="Transcription & prosody")
+                    run_yolo_btn = gr.Button("🔍 Object (YOLO)", size="sm", info="Object & material detection")
+                    run_ai_btn = gr.Button("🤖 AI Detection", size="sm", info="Deepfake & AIGC detection")
+                    run_consensus_btn = gr.Button("📊 Summary", size="sm", info="Aggregate all results")
+                
+                gr.Markdown("---")
+                
+                # Results Tabs with meaningful names
+                with gr.Tabs():
+                    with gr.Tab("📹 Camera & Color", id="result_visual"):
+                        gr.Markdown("""
+                        **What this analyzes:**
+                        - 📷 Camera angle (overhead, eye-level, low)
+                        - 🎨 Color palette (hue, saturation, brightness)
+                        - 🎬 Scene type & composition
+                        - ✂️ Cut frequency & pacing
+                        """)
+                        visual_result = gr.Markdown(f"*{t('upload_first')}*")
+                        contact_img = gr.Image(
+                            label="Contact Sheet (Frame Overview)",
+                            height=200,
+                            show_download_button=True
+                        )
+                    
+                    with gr.Tab("🎵 BGM & Tempo", id="result_audio"):
+                        gr.Markdown("""
+                        **What this analyzes:**
+                        - 🎸 BGM style (pop, electronic, classical...)
+                        - 💓 Tempo (BPM) & rhythm
+                        - 🎭 Mood (happy, calm, energetic...)
+                        - 🎹 Instruments detected
+                        """)
+                        audio_result = gr.Markdown(f"*{t('upload_first')}*")
+                    
+                    with gr.Tab("🎤 Speech & Emotion", id="result_asr"):
+                        gr.Markdown("""
+                        **What this analyzes:**
+                        - 📝 Full transcription (Whisper large-v3)
+                        - 🗣️ Speech rate (words per minute)
+                        - 🎭 Emotion (HuBERT model)
+                        - 📊 Prosody (pitch, intensity)
+                        """)
+                        asr_result = gr.Markdown(f"*{t('upload_first')}*")
+                    
+                    with gr.Tab("🔍 Objects & Materials", id="result_yolo"):
+                        gr.Markdown("""
+                        **What this analyzes:**
+                        - 📦 Object detection (YOLO11)
+                        - 🏠 Environment classification
+                        - 🎨 Object colors (dominant, secondary)
+                        - 🧱 Material analysis (wood, metal, fabric...)
+                        """)
+                        yolo_result = gr.Markdown(f"*{t('upload_first')}*")
+                    
+                    with gr.Tab("🤖 AI/Deepfake Detection", id="result_ai"):
+                        gr.Markdown("""
+                        **What this analyzes:**
+                        - 🎭 Deepfake detection (ViT model, 92% acc)
+                        - 🎨 AIGC detection (SD/DALL-E/MJ)
+                        - 🔊 Audio deepfake (voice cloning)
+                        - ⏱️ Temporal consistency (CLIP)
+                        
+                        *Results show weighted ensemble scores*
+                        """)
+                        ai_result = gr.Markdown(f"*{t('upload_first')}*")
+                    
+                    with gr.Tab("📊 Cross-Video Summary", id="result_summary"):
+                        gr.Markdown("""
+                        **What this shows:**
+                        - 📈 Aggregated metrics across all analyses
+                        - 🎯 Dominant patterns & consensus values
+                        - 📊 Distribution of detected features
+                        """)
+                        consensus_result = gr.Markdown(f"*{t('run_analysis_first')}*")
+            
+            # ========== Tab 3: Export & Reports ==========
+            with gr.Tab("📥 Export & Reports", id="tab_export"):
+                gr.Markdown("### 📄 Generate Reports")
+                
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        gr.Markdown("**Report Generation**")
+                        with gr.Row():
+                            gen_report_btn = gr.Button("📄 Generate Word Report", variant="primary")
+                            export_json_btn = gr.Button("💾 Export JSON Data")
+                        
+                        report_status = gr.Textbox(
+                            label="Generation Status",
+                            lines=2,
+                            interactive=False
+                        )
+                    
+                    with gr.Column(scale=1):
+                        gr.Markdown("**Download Files**")
+                        report_file = gr.File(label="📄 Word Report (.docx)")
+                        pdf_file = gr.File(label="📕 PDF Report")
+                        json_file = gr.File(label="💾 JSON Data")
+                        json_status = gr.Textbox(label="JSON Status", lines=1, interactive=False)
+                
+                gr.Markdown("---")
+                gr.Markdown("### 📋 Quick Summary")
+                summary_box = gr.Textbox(
+                    label="Analysis Overview",
+                    lines=12,
+                    interactive=False,
+                    info="Key metrics at a glance"
+                )
+            
+            # ========== Tab 4: Configuration ==========
+            with gr.Tab("⚙️ Settings & Weights", id="tab_config"):
+                gr.Markdown("### ⚙️ Analysis Configuration")
+                gr.Markdown("*Adjust parameters for each analysis module. Changes apply to next analysis.*")
+                
                 with gr.Row():
                     with gr.Column():
-                        gr.Markdown("### 📹 Visual Analysis")
-                        cfg_visual_frames = gr.Slider(10, 200, value=cfg.visual.target_frames, step=10, label=t('visual_frames'))
-                        cfg_visual_threshold = gr.Slider(10, 50, value=cfg.visual.scene_threshold, step=1, label=t('visual_scene_threshold'))
+                        gr.Markdown("#### 📹 Visual Analysis")
+                        cfg_visual_frames = gr.Slider(
+                            10, 200, value=cfg.visual.target_frames, step=10,
+                            label="Target Frames",
+                            info="Number of frames to sample for analysis (more = slower but more accurate)"
+                        )
+                        cfg_visual_threshold = gr.Slider(
+                            10, 50, value=cfg.visual.scene_threshold, step=1,
+                            label="Scene Detection Threshold",
+                            info="Lower = more sensitive scene change detection"
+                        )
                         
-                        gr.Markdown("### 🔍 YOLO Detection")
+                        gr.Markdown("#### 🔍 YOLO Object Detection")
                         cfg_yolo_model = gr.Dropdown(
                             choices=["yolo11n.pt", "yolo11s.pt", "yolo11m.pt", "yolo11l.pt"],
-                            value=cfg.yolo.model_name, label=t('yolo_model')
+                            value=cfg.yolo.model_name,
+                            label="YOLO Model",
+                            info="n=fastest, l=most accurate"
                         )
-                        cfg_yolo_conf = gr.Slider(0.1, 0.9, value=cfg.yolo.confidence_threshold, step=0.05, label=t('yolo_conf'))
-                        cfg_yolo_frames = gr.Slider(10, 100, value=cfg.yolo.target_frames, step=5, label=t('yolo_frames'))
+                        cfg_yolo_conf = gr.Slider(
+                            0.1, 0.9, value=cfg.yolo.confidence_threshold, step=0.05,
+                            label="Confidence Threshold",
+                            info="Minimum confidence to report detection"
+                        )
+                        cfg_yolo_frames = gr.Slider(
+                            10, 100, value=cfg.yolo.target_frames, step=5,
+                            label="Frames to Analyze",
+                            info="More frames = better coverage"
+                        )
                         
-                        gr.Markdown("### 🎤 ASR")
+                        gr.Markdown("#### 🎤 Speech Recognition (ASR)")
                         cfg_asr_model = gr.Dropdown(
                             choices=["tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"],
-                            value=cfg.asr.whisper_model, label=t('asr_model')
+                            value=cfg.asr.whisper_model,
+                            label="Whisper Model",
+                            info="large-v3-turbo = best quality, tiny = fastest"
                         )
-                        cfg_asr_beam = gr.Slider(1, 10, value=cfg.asr.whisper_beam_size, step=1, label=t('asr_beam_size'))
+                        cfg_asr_beam = gr.Slider(
+                            1, 10, value=cfg.asr.whisper_beam_size, step=1,
+                            label="Beam Size",
+                            info="Higher = better quality but slower"
+                        )
                     
                     with gr.Column():
-                        gr.Markdown("### 🤖 AI Detection (SOTA 2025/2026)")
-                        cfg_ai_enabled = gr.Checkbox(value=cfg.ai_detection.enabled, label=t('ai_enabled'))
+                        gr.Markdown("#### 🤖 AI Detection Models")
+                        gr.Markdown("*⭐ = HuggingFace pretrained (high reliability)*")
                         
-                        gr.Markdown("**Models**")
-                        cfg_ai_deepfake = gr.Checkbox(value=cfg.ai_detection.use_deepfake, label="DeepFake-v2 (ViT) ⭐")
-                        cfg_ai_clip = gr.Checkbox(value=cfg.ai_detection.use_clip, label="CLIP (Synthetic) ⭐")
-                        cfg_ai_temporal = gr.Checkbox(value=cfg.ai_detection.use_temporal, label="Temporal (CLIP) ✅")
-                        cfg_ai_face = gr.Checkbox(value=cfg.ai_detection.use_face_detection, label="Face Detection")
+                        cfg_ai_enabled = gr.Checkbox(
+                            value=cfg.ai_detection.enabled,
+                            label="Enable AI Detection",
+                            info="Master switch for all AI detection"
+                        )
                         
-                        cfg_ai_threshold = gr.Slider(0.1, 0.9, value=cfg.ai_detection.fake_threshold, step=0.05, label="Fake Threshold")
+                        gr.Markdown("**Detection Models:**")
+                        cfg_ai_deepfake = gr.Checkbox(
+                            value=cfg.ai_detection.use_deepfake,
+                            label="⭐ DeepFake-v2 (ViT, 92% acc)",
+                            info="HuggingFace model for face deepfakes"
+                        )
+                        cfg_ai_clip = gr.Checkbox(
+                            value=cfg.ai_detection.use_clip,
+                            label="⭐ CLIP Zero-Shot",
+                            info="Detect synthetic images using CLIP"
+                        )
+                        cfg_ai_temporal = gr.Checkbox(
+                            value=cfg.ai_detection.use_temporal,
+                            label="✅ CLIP-Temporal Analysis",
+                            info="Semantic consistency between frames"
+                        )
+                        cfg_ai_aigc = gr.Checkbox(
+                            value=cfg.ai_detection.use_aigc,
+                            label="⭐ AIGC Detector",
+                            info="Detects Stable Diffusion/DALL-E/Midjourney"
+                        )
+                        cfg_ai_audio = gr.Checkbox(
+                            value=cfg.ai_detection.use_audio_deepfake,
+                            label="⭐ Audio Deepfake",
+                            info="Detects voice cloning & TTS"
+                        )
+                        cfg_ai_face = gr.Checkbox(
+                            value=cfg.ai_detection.use_face_detection,
+                            label="Face Analysis",
+                            info="No-face ratio analysis"
+                        )
                         
-                        gr.Markdown("### ⚖️ Ensemble Weights")
-                        cfg_ai_deepfake_weight = gr.Slider(0, 1, value=cfg.ai_detection.deepfake_weight, step=0.1, label="DeepFake-v2 Weight")
-                        cfg_ai_clip_weight = gr.Slider(0, 1, value=cfg.ai_detection.clip_weight, step=0.1, label="CLIP Weight")
-                        cfg_ai_temporal_weight = gr.Slider(0, 1, value=cfg.ai_detection.temporal_weight, step=0.1, label="Temporal Weight")
-                        cfg_ai_face_weight = gr.Slider(0, 1, value=cfg.ai_detection.face_weight, step=0.1, label="Face Weight")
+                        cfg_ai_threshold = gr.Slider(
+                            0.1, 0.9, value=cfg.ai_detection.fake_threshold, step=0.05,
+                            label="AI Detection Threshold",
+                            info="Score above this = flagged as AI"
+                        )
+                        
+                        gr.Markdown("#### ⚖️ Ensemble Weights")
+                        gr.Markdown("*Higher weight = more influence on final score. Total should ≈ 1.0*")
+                        
+                        cfg_ai_deepfake_weight = gr.Slider(
+                            0, 1, value=cfg.ai_detection.deepfake_weight, step=0.05,
+                            label="DeepFake-v2 Weight (⭐ HuggingFace)"
+                        )
+                        cfg_ai_clip_weight = gr.Slider(
+                            0, 1, value=cfg.ai_detection.clip_weight, step=0.05,
+                            label="CLIP Synthetic Weight (⭐ HuggingFace)"
+                        )
+                        cfg_ai_temporal_weight = gr.Slider(
+                            0, 1, value=cfg.ai_detection.temporal_weight, step=0.05,
+                            label="CLIP-Temporal Weight (✅ Computed)"
+                        )
+                        cfg_ai_aigc_weight = gr.Slider(
+                            0, 1, value=cfg.ai_detection.aigc_weight, step=0.05,
+                            label="AIGC Detector Weight (⭐ HuggingFace)"
+                        )
+                        cfg_ai_audio_weight = gr.Slider(
+                            0, 1, value=cfg.ai_detection.audio_deepfake_weight, step=0.05,
+                            label="Audio Deepfake Weight (⭐ HuggingFace)"
+                        )
+                        cfg_ai_face_weight = gr.Slider(
+                            0, 1, value=cfg.ai_detection.face_weight, step=0.05,
+                            label="Face Analysis Weight"
+                        )
                 
+                gr.Markdown("---")
                 config_status = gr.Textbox(label="Status", interactive=False)
-                save_config_btn = gr.Button("💾 Save Configuration", variant="primary")
+                save_config_btn = gr.Button("💾 Save Configuration", variant="primary", size="lg")
                 
                 save_config_btn.click(
                     fn=update_config,
@@ -939,8 +1358,8 @@ def create_ui():
                         cfg_visual_frames, cfg_visual_threshold,
                         cfg_yolo_model, cfg_yolo_conf, cfg_yolo_frames,
                         cfg_asr_model, cfg_asr_beam,
-                        cfg_ai_enabled, cfg_ai_deepfake, cfg_ai_clip, cfg_ai_temporal, cfg_ai_face,
-                        cfg_ai_threshold, cfg_ai_deepfake_weight, cfg_ai_clip_weight, cfg_ai_temporal_weight, cfg_ai_face_weight
+                        cfg_ai_enabled, cfg_ai_deepfake, cfg_ai_clip, cfg_ai_temporal, cfg_ai_aigc, cfg_ai_audio, cfg_ai_face,
+                        cfg_ai_threshold, cfg_ai_deepfake_weight, cfg_ai_clip_weight, cfg_ai_temporal_weight, cfg_ai_aigc_weight, cfg_ai_audio_weight, cfg_ai_face_weight
                     ],
                     outputs=[config_status]
                 )
