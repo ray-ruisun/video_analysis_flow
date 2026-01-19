@@ -47,6 +47,7 @@ from .step_asr import ASRAnalysisStep, ASRInput
 from .step_yolo import YOLOAnalysisStep, YOLOInput
 from .step_consensus import ConsensusStep
 from .step_report import ReportGenerationStep
+from .step_ai_detection import AIDetectionStep, AIDetectionInput, AIDetectionOutput
 
 __all__ = [
     # 基础类型
@@ -60,6 +61,7 @@ __all__ = [
     "YOLOInput",
     "ConsensusInput",
     "ReportInput",
+    "AIDetectionInput",
     # 输出类型
     "VisualOutput",
     "AudioOutput",
@@ -67,6 +69,7 @@ __all__ = [
     "YOLOOutput",
     "ConsensusOutput",
     "ReportOutput",
+    "AIDetectionOutput",
     # 聚合类型
     "VideoMetrics",
     # 步骤类
@@ -76,4 +79,5 @@ __all__ = [
     "YOLOAnalysisStep",
     "ConsensusStep",
     "ReportGenerationStep",
+    "AIDetectionStep",
 ]
