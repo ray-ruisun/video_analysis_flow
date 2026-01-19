@@ -49,20 +49,24 @@ TRANSLATIONS = {
         "audio_preview": "Extracted Audio",
         "keyframes": "Key Frames",
         "analyze_all": "🎯 Analyze All",
-        "btn_visual": "📹 Visual",
-        "btn_audio": "🎵 Audio",
-        "btn_asr": "🎤 ASR",
-        "btn_yolo": "🔍 YOLO",
+        "btn_visual": "📹 Camera & Color",
+        "btn_audio": "🎵 BGM & Tempo",
+        "btn_asr": "🎤 Speech & Emotion",
+        "btn_yolo": "🔍 Objects",
         "btn_consensus": "📊 Summary",
         "btn_ai_detect": "🤖 AI Detect",
         "gen_report": "📄 Report",
         "export_json": "💾 JSON",
-        "tab_visual": "📹 Visual",
-        "tab_audio": "🎵 Audio",
-        "tab_asr": "🎤 ASR",
-        "tab_yolo": "🔍 YOLO",
-        "tab_summary": "📊 Summary",
-        "tab_ai": "🤖 AI Detection",
+        "tab_upload": "📤 Upload & Preview",
+        "tab_analysis": "🚀 Run Analysis",
+        "tab_export": "📥 Export & Reports",
+        "tab_config": "⚙️ Settings & Weights",
+        "tab_visual": "📹 Camera & Color",
+        "tab_audio": "🎵 BGM & Tempo",
+        "tab_asr": "🎤 Speech & Emotion",
+        "tab_yolo": "🔍 Objects & Materials",
+        "tab_summary": "📊 Cross-Video Summary",
+        "tab_ai": "🤖 AI/Deepfake Detection",
         "report_status": "Report Status",
         "word_report": "Word Report",
         "pdf_report": "PDF Report",
@@ -132,20 +136,24 @@ TRANSLATIONS = {
         "audio_preview": "提取的音频",
         "keyframes": "关键帧",
         "analyze_all": "🎯 一键分析",
-        "btn_visual": "📹 视觉",
-        "btn_audio": "🎵 音频",
-        "btn_asr": "🎤 语音",
-        "btn_yolo": "🔍 检测",
-        "btn_consensus": "📊 汇总",
+        "btn_visual": "📹 镜头色彩",
+        "btn_audio": "🎵 背景音乐",
+        "btn_asr": "🎤 语音情感",
+        "btn_yolo": "🔍 物体检测",
+        "btn_consensus": "📊 综合汇总",
         "btn_ai_detect": "🤖 AI检测",
-        "gen_report": "📄 报告",
-        "export_json": "💾 JSON",
-        "tab_visual": "📹 视觉",
-        "tab_audio": "🎵 音频",
-        "tab_asr": "🎤 语音",
-        "tab_yolo": "🔍 检测",
-        "tab_summary": "📊 汇总",
-        "tab_ai": "🤖 AI检测",
+        "gen_report": "📄 生成报告",
+        "export_json": "💾 导出JSON",
+        "tab_upload": "📤 上传与预览",
+        "tab_analysis": "🚀 运行分析",
+        "tab_export": "📥 导出与报告",
+        "tab_config": "⚙️ 参数设置",
+        "tab_visual": "📹 镜头与色彩",
+        "tab_audio": "🎵 背景音乐与节奏",
+        "tab_asr": "🎤 语音与情感",
+        "tab_yolo": "🔍 物体与材质",
+        "tab_summary": "📊 综合汇总",
+        "tab_ai": "🤖 AI生成检测",
         "report_status": "报告状态",
         "word_report": "Word 报告",
         "pdf_report": "PDF 报告",
@@ -876,10 +884,12 @@ def run_all(language: str, progress=gr.Progress()):
 
 def gen_report(progress=gr.Progress()):
     if STATE.video_path is None:
-        return f"❌ {t('upload_first')}", None, None
+        error_html = "<div style='text-align:center; padding:40px; background:#fee; border-radius:8px;'><p>❌ Please upload a video first</p></div>"
+        return f"❌ {t('upload_first')}", None, None, error_html
     
     if STATE.visual_output is None and STATE.audio_output is None:
-        return f"❌ {t('run_analysis_first')}", None, None
+        error_html = "<div style='text-align:center; padding:40px; background:#fee; border-radius:8px;'><p>❌ Please run analysis first</p></div>"
+        return f"❌ {t('run_analysis_first')}", None, None, error_html
     
     progress(0.2, desc="📄 Generating Word...")
     
@@ -913,10 +923,24 @@ def gen_report(progress=gr.Progress()):
     progress(1.0, desc=t('done'))
     
     status = f"{t('report_generated')}\n📄 {report_path.name}"
+    
+    # Generate PDF preview HTML
+    pdf_preview_html = "<div style='text-align:center; padding:40px; background:#f5f5f5; border-radius:8px;'><p>📄 PDF conversion not available (requires LibreOffice)</p></div>"
     if STATE.pdf_path:
         status += f"\n📕 {Path(STATE.pdf_path).name}"
+        # Create embedded PDF viewer
+        pdf_preview_html = f'''
+        <div style="width:100%; height:500px; border:1px solid #ddd; border-radius:8px; overflow:hidden;">
+            <iframe src="file://{STATE.pdf_path}" width="100%" height="100%" style="border:none;">
+                <p>PDF preview not supported. <a href="file://{STATE.pdf_path}" download>Download PDF</a></p>
+            </iframe>
+        </div>
+        <p style="text-align:center; margin-top:10px; color:#666;">
+            ⬆️ If preview doesn't load, download the PDF file above
+        </p>
+        '''
     
-    return status, STATE.report_path, STATE.pdf_path
+    return status, STATE.report_path, STATE.pdf_path, pdf_preview_html
 
 
 def export_json():
@@ -993,6 +1017,14 @@ def update_config(
 
 def switch_language(lang: str):
     set_language(lang)
+    # Note: Tab labels can't be dynamically updated in Gradio
+    # Use --lang zh to start with Chinese interface
+    footer_note = t('footer')
+    if lang == "zh":
+        footer_note += " | 🔄 刷新页面以更新所有标签"
+    else:
+        footer_note += " | 🔄 Refresh page for full language switch"
+    
     return (
         f"# {t('title')}\n**{t('subtitle')}** | {t('models')}",
         t('analyze_all'),
@@ -1004,7 +1036,7 @@ def switch_language(lang: str):
         t('btn_consensus'),
         t('gen_report'),
         t('export_json'),
-        t('footer'),
+        footer_note,
     )
 
 
@@ -1029,7 +1061,7 @@ def create_ui():
         
         with gr.Tabs():
             # ========== Tab 1: Upload & Preview ==========
-            with gr.Tab("📤 Upload & Preview", id="tab_upload"):
+            with gr.Tab(t('tab_upload'), id="tab_upload"):
                 with gr.Row():
                     # Left: Upload Section (wider)
                     with gr.Column(scale=2, min_width=400):
@@ -1081,7 +1113,7 @@ def create_ui():
                         )
             
             # ========== Tab 2: Run Analysis ==========
-            with gr.Tab("🚀 Run Analysis", id="tab_analysis"):
+            with gr.Tab(t('tab_analysis'), id="tab_analysis"):
                 gr.Markdown("### 🎯 Analysis Controls")
                 gr.Markdown("*Click 'Analyze All' for complete analysis, or run individual modules*")
                 
@@ -1095,116 +1127,96 @@ def create_ui():
                 
                 gr.Markdown("**Individual Analysis Modules:**")
                 with gr.Row():
-                    run_visual_btn = gr.Button("📹 Visual", size="sm")
-                    run_audio_btn = gr.Button("🎵 Audio", size="sm")
-                    run_asr_btn = gr.Button("🎤 ASR", size="sm")
-                    run_yolo_btn = gr.Button("🔍 YOLO", size="sm")
-                    run_ai_btn = gr.Button("🤖 AI Detect", size="sm")
-                    run_consensus_btn = gr.Button("📊 Summary", size="sm")
+                    run_visual_btn = gr.Button(t('btn_visual'), size="sm")
+                    run_audio_btn = gr.Button(t('btn_audio'), size="sm")
+                    run_asr_btn = gr.Button(t('btn_asr'), size="sm")
+                    run_yolo_btn = gr.Button(t('btn_yolo'), size="sm")
+                    run_ai_btn = gr.Button(t('btn_ai_detect'), size="sm")
+                    run_consensus_btn = gr.Button(t('btn_consensus'), size="sm")
                 
                 gr.Markdown("---")
                 
                 # Results Tabs with meaningful names
                 with gr.Tabs():
-                    with gr.Tab("📹 Camera & Color", id="result_visual"):
-                        gr.Markdown("""
-                        **What this analyzes:**
-                        - 📷 Camera angle (overhead, eye-level, low)
-                        - 🎨 Color palette (hue, saturation, brightness)
-                        - 🎬 Scene type & composition
-                        - ✂️ Cut frequency & pacing
-                        """)
+                    with gr.Tab(t('tab_visual'), id="result_visual"):
                         visual_result = gr.Markdown(f"*{t('upload_first')}*")
                         contact_img = gr.Image(
-                            label="Contact Sheet (Frame Overview)",
+                            label="Contact Sheet",
                             height=200
                         )
                     
-                    with gr.Tab("🎵 BGM & Tempo", id="result_audio"):
-                        gr.Markdown("""
-                        **What this analyzes:**
-                        - 🎸 BGM style (pop, electronic, classical...)
-                        - 💓 Tempo (BPM) & rhythm
-                        - 🎭 Mood (happy, calm, energetic...)
-                        - 🎹 Instruments detected
-                        """)
+                    with gr.Tab(t('tab_audio'), id="result_audio"):
                         audio_result = gr.Markdown(f"*{t('upload_first')}*")
                     
-                    with gr.Tab("🎤 Speech & Emotion", id="result_asr"):
-                        gr.Markdown("""
-                        **What this analyzes:**
-                        - 📝 Full transcription (Whisper large-v3)
-                        - 🗣️ Speech rate (words per minute)
-                        - 🎭 Emotion (HuBERT model)
-                        - 📊 Prosody (pitch, intensity)
-                        """)
+                    with gr.Tab(t('tab_asr'), id="result_asr"):
                         asr_result = gr.Markdown(f"*{t('upload_first')}*")
                     
-                    with gr.Tab("🔍 Objects & Materials", id="result_yolo"):
-                        gr.Markdown("""
-                        **What this analyzes:**
-                        - 📦 Object detection (YOLO11)
-                        - 🏠 Environment classification
-                        - 🎨 Object colors (dominant, secondary)
-                        - 🧱 Material analysis (wood, metal, fabric...)
-                        """)
+                    with gr.Tab(t('tab_yolo'), id="result_yolo"):
                         yolo_result = gr.Markdown(f"*{t('upload_first')}*")
                     
-                    with gr.Tab("🤖 AI/Deepfake Detection", id="result_ai"):
-                        gr.Markdown("""
-                        **What this analyzes:**
-                        - 🎭 Deepfake detection (ViT model, 92% acc)
-                        - 🎨 AIGC detection (SD/DALL-E/MJ)
-                        - 🔊 Audio deepfake (voice cloning)
-                        - ⏱️ Temporal consistency (CLIP)
-                        
-                        *Results show weighted ensemble scores*
-                        """)
+                    with gr.Tab(t('tab_ai'), id="result_ai"):
                         ai_result = gr.Markdown(f"*{t('upload_first')}*")
                     
-                    with gr.Tab("📊 Cross-Video Summary", id="result_summary"):
-                        gr.Markdown("""
-                        **What this shows:**
-                        - 📈 Aggregated metrics across all analyses
-                        - 🎯 Dominant patterns & consensus values
-                        - 📊 Distribution of detected features
-                        """)
+                    with gr.Tab(t('tab_summary'), id="result_summary"):
                         consensus_result = gr.Markdown(f"*{t('run_analysis_first')}*")
             
             # ========== Tab 3: Export & Reports ==========
-            with gr.Tab("📥 Export & Reports", id="tab_export"):
-                gr.Markdown("### 📄 Generate Reports")
+            with gr.Tab(t('tab_export'), id="tab_export"):
+                gr.Markdown("### 📄 Export Analysis Results")
                 
                 with gr.Row():
+                    # Left: PDF Report
                     with gr.Column(scale=1):
-                        gr.Markdown("**Report Generation**")
-                        with gr.Row():
-                            gen_report_btn = gr.Button("📄 Generate Word Report", variant="primary")
-                            export_json_btn = gr.Button("💾 Export JSON Data")
-                        
+                        gr.Markdown("#### 📕 PDF Report")
+                        gen_report_btn = gr.Button("📄 Generate Report", variant="primary", size="lg")
                         report_status = gr.Textbox(
-                            label="Generation Status",
-                            lines=2,
+                            label="Status",
+                            lines=1,
                             interactive=False
                         )
+                        
+                        gr.Markdown("**Downloads:**")
+                        with gr.Row():
+                            report_file = gr.File(label="Word (.docx)")
+                            pdf_file = gr.File(label="PDF")
+                        
+                        gr.Markdown("**PDF Preview:**")
+                        pdf_preview = gr.HTML(
+                            value="<div style='text-align:center; padding:40px; background:#f5f5f5; border-radius:8px;'><p>📄 Generate report to preview PDF</p></div>",
+                            label="PDF Preview"
+                        )
                     
+                    # Right: JSON Export
                     with gr.Column(scale=1):
-                        gr.Markdown("**Download Files**")
-                        report_file = gr.File(label="📄 Word Report (.docx)")
-                        pdf_file = gr.File(label="📕 PDF Report")
-                        json_file = gr.File(label="💾 JSON Data")
-                        json_status = gr.Textbox(label="JSON Status", lines=1, interactive=False)
+                        gr.Markdown("#### 💾 JSON Data")
+                        export_json_btn = gr.Button("💾 Export JSON", variant="secondary", size="lg")
+                        json_status = gr.Textbox(
+                            label="Status",
+                            lines=1,
+                            interactive=False
+                        )
+                        
+                        gr.Markdown("**Download:**")
+                        json_file = gr.File(label="JSON Data")
+                        
+                        gr.Markdown("**JSON Preview:**")
+                        json_preview = gr.Code(
+                            value="// Generate JSON to preview data",
+                            language="json",
+                            label="JSON Preview",
+                            lines=15
+                        )
                 
                 gr.Markdown("---")
                 gr.Markdown("### 📋 Quick Summary")
                 summary_box = gr.Textbox(
                     label="Analysis Overview",
-                    lines=12,
+                    lines=10,
                     interactive=False
                 )
             
             # ========== Tab 4: Configuration ==========
-            with gr.Tab("⚙️ Settings & Weights", id="tab_config"):
+            with gr.Tab(t('tab_config'), id="tab_config"):
                 gr.Markdown("### ⚙️ Analysis Configuration")
                 gr.Markdown("*Adjust parameters for each analysis module. Changes apply to next analysis.*")
                 
