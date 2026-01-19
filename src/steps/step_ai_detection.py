@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
-from .base import BaseStep, StepInput, StepOutput
+from .base import PipelineStep, StepInput, StepOutput
 
 
 @dataclass
@@ -96,7 +96,7 @@ class AIDetectionOutput(StepOutput):
         }
 
 
-class AIDetectionStep(BaseStep):
+class AIDetectionStep(PipelineStep[AIDetectionInput, AIDetectionOutput]):
     """
     AI-Generated Video Detection Step (SOTA 2025/2026)
     
@@ -107,8 +107,13 @@ class AIDetectionStep(BaseStep):
     4. Face Detection - No-face video analysis
     """
     
-    step_name = "AI Detection"
-    step_name_zh = "AI生成检测"
+    @property
+    def name(self) -> str:
+        return "AI Detection"
+    
+    @property
+    def description(self) -> str:
+        return "AI生成检测 (GenConViT + CLIP + Temporal)"
     
     def run(self, input_data: AIDetectionInput) -> AIDetectionOutput:
         """Run AI detection analysis"""
