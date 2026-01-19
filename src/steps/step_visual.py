@@ -103,14 +103,23 @@ class VisualAnalysisStep(PipelineStep[VideoInput, VisualOutput]):
             fps=raw_result.get("fps", 0.0),
             total_frames=raw_result.get("total_frames", 0),
             duration=raw_result.get("duration", 0.0),
-            # 色彩分析
+            sampled_frames=raw_result.get("sampled_frames", 0),
+            # 色彩分析 (含详细分布)
             hue_family=raw_result.get("hue_family", "Unknown"),
+            hue_detail=raw_result.get("hue_detail", {}),
             saturation_band=raw_result.get("saturation_band", "Unknown"),
+            saturation_detail=raw_result.get("saturation_detail", {}),
             brightness_band=raw_result.get("brightness_band", "Unknown"),
+            brightness_detail=raw_result.get("brightness_detail", {}),
             contrast=raw_result.get("contrast", "Unknown"),
+            contrast_detail=raw_result.get("contrast_detail", {}),
+            # 色温
             cct_mean=raw_result.get("cct_mean"),
-            # 镜头分析
+            cct_std=raw_result.get("cct_std"),
+            cct_range=raw_result.get("cct_range"),
+            # 镜头分析 (含详细分布)
             camera_angle=raw_result.get("camera_angle", "Unknown"),
+            camera_angle_detail=raw_result.get("camera_angle_detail", {}),
             focal_length_tendency=raw_result.get("focal_length_tendency", "Unknown"),
             camera_motion=raw_result.get("camera_motion", {}),
             # 构图分析
@@ -122,9 +131,11 @@ class VisualAnalysisStep(PipelineStep[VideoInput, VisualOutput]):
             cut_timestamps=raw_result.get("cut_timestamps", []),
             avg_shot_length=raw_result.get("avg_shot_length", 0.0),
             transition_type=raw_result.get("transition_type", "Unknown"),
-            # 台面分析
+            # 台面分析 (含详细分布)
             countertop_color=raw_result.get("countertop_color", "Unknown"),
+            countertop_color_detail=raw_result.get("countertop_color_detail", {}),
             countertop_texture=raw_result.get("countertop_texture", "Unknown"),
+            countertop_texture_detail=raw_result.get("countertop_texture_detail", {}),
             # 光线分析
             lighting=raw_result.get("lighting", {}),
             # 截图路径

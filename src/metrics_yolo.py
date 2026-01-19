@@ -304,16 +304,36 @@ def analyze_object_colors(frames, detection_results, color_samples=5):
                     object_colors[obj_name] = []
                 object_colors[obj_name].append(color)
         
-        # Aggregate colors per object
-        dominant_colors = {}
+        # Aggregate colors per object with detailed distribution
+        color_analysis = {}
         for obj, colors in object_colors.items():
             counter = Counter(colors)
-            dominant_colors[obj] = counter.most_common(1)[0][0] if counter else "Unknown"
+            total = len(colors)
+            distribution = [
+                {
+                    "color": color,
+                    "count": count,
+                    "percentage": round(count / total * 100, 1)
+                }
+                for color, count in counter.most_common()
+            ]
+            dominant = counter.most_common(1)[0][0] if counter else "Unknown"
+            
+            color_analysis[obj] = {
+                "dominant": dominant,
+                "distribution": distribution,
+                "all_colors": list(counter.keys()),
+                "sample_count": total
+            }
+        
+        # Also create a summary of dominant colors for backward compatibility
+        dominant_colors = {obj: data["dominant"] for obj, data in color_analysis.items()}
         
         logger.debug(f"Color analysis completed for {len(dominant_colors)} objects")
         
         return {
-            "dominant_colors": dominant_colors
+            "dominant_colors": dominant_colors,
+            "detailed_analysis": color_analysis
         }
         
     except Exception as e:
@@ -421,16 +441,36 @@ def analyze_object_materials(frames, detection_results, material_samples=5):
                     object_materials[obj_name] = []
                 object_materials[obj_name].append(material)
         
-        # Aggregate materials per object
-        dominant_materials = {}
+        # Aggregate materials per object with detailed distribution
+        material_analysis = {}
         for obj, materials in object_materials.items():
             counter = Counter(materials)
-            dominant_materials[obj] = counter.most_common(1)[0][0] if counter else "Unknown"
+            total = len(materials)
+            distribution = [
+                {
+                    "material": material,
+                    "count": count,
+                    "percentage": round(count / total * 100, 1)
+                }
+                for material, count in counter.most_common()
+            ]
+            dominant = counter.most_common(1)[0][0] if counter else "Unknown"
+            
+            material_analysis[obj] = {
+                "dominant": dominant,
+                "distribution": distribution,
+                "all_materials": list(counter.keys()),
+                "sample_count": total
+            }
+        
+        # Also create a summary for backward compatibility
+        dominant_materials = {obj: data["dominant"] for obj, data in material_analysis.items()}
         
         logger.debug(f"Material analysis completed for {len(dominant_materials)} objects")
         
         return {
-            "dominant_materials": dominant_materials
+            "dominant_materials": dominant_materials,
+            "detailed_analysis": material_analysis
         }
         
     except Exception as e:

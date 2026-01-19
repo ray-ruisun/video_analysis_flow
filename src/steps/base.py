@@ -78,21 +78,35 @@ class VisualOutput(StepOutput):
     视觉分析输出
     
     包含: 色彩分析、镜头角度、构图、场景分类、剪辑节奏等
+    
+    每个分类指标都有两个字段:
+    - xxx: 主导值 (dominant value)
+    - xxx_detail: 详细分布 (包含 distribution, all_values, unique_count)
     """
     # 基础信息
     fps: float = 0.0
     total_frames: int = 0
     duration: float = 0.0
+    sampled_frames: int = 0
     
-    # 色彩分析
+    # 色彩分析 (带详细分布)
     hue_family: str = "Unknown"
+    hue_detail: Dict[str, Any] = field(default_factory=dict)
     saturation_band: str = "Unknown"
+    saturation_detail: Dict[str, Any] = field(default_factory=dict)
     brightness_band: str = "Unknown"
+    brightness_detail: Dict[str, Any] = field(default_factory=dict)
     contrast: str = "Unknown"
-    cct_mean: Optional[float] = None
+    contrast_detail: Dict[str, Any] = field(default_factory=dict)
     
-    # 镜头分析
+    # 色温
+    cct_mean: Optional[float] = None
+    cct_std: Optional[float] = None
+    cct_range: Optional[Dict[str, float]] = None
+    
+    # 镜头分析 (带详细分布)
     camera_angle: str = "Unknown"
+    camera_angle_detail: Dict[str, Any] = field(default_factory=dict)
     focal_length_tendency: str = "Unknown"
     camera_motion: Dict[str, Any] = field(default_factory=dict)
     
@@ -108,38 +122,58 @@ class VisualOutput(StepOutput):
     avg_shot_length: float = 0.0
     transition_type: str = "Unknown"
     
-    # 台面分析
+    # 台面分析 (带详细分布)
     countertop_color: str = "Unknown"
+    countertop_color_detail: Dict[str, Any] = field(default_factory=dict)
     countertop_texture: str = "Unknown"
+    countertop_texture_detail: Dict[str, Any] = field(default_factory=dict)
     
-    # 光线分析
+    # 光线分析 (带详细分布)
     lighting: Dict[str, Any] = field(default_factory=dict)
     
     # 截图路径
     contact_sheet: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典格式（兼容旧版接口）"""
+        """转换为字典格式（包含详细分布）"""
         return {
             "fps": self.fps,
             "total_frames": self.total_frames,
             "duration": self.duration,
+            "sampled_frames": self.sampled_frames,
+            # 色彩分析 (含详细分布)
             "hue_family": self.hue_family,
+            "hue_detail": self.hue_detail,
             "saturation_band": self.saturation_band,
+            "saturation_detail": self.saturation_detail,
             "brightness_band": self.brightness_band,
+            "brightness_detail": self.brightness_detail,
             "contrast": self.contrast,
+            "contrast_detail": self.contrast_detail,
+            # 色温
             "cct_mean": self.cct_mean,
+            "cct_std": self.cct_std,
+            "cct_range": self.cct_range,
+            # 镜头分析 (含详细分布)
             "camera_angle": self.camera_angle,
+            "camera_angle_detail": self.camera_angle_detail,
             "focal_length_tendency": self.focal_length_tendency,
             "camera_motion": self.camera_motion,
+            # 构图
             "composition": self.composition,
+            # 场景分类
             "scene_categories": self.scene_categories,
+            # 剪辑分析
             "cuts": self.cuts,
             "cut_timestamps": self.cut_timestamps,
             "avg_shot_length": self.avg_shot_length,
             "transition_type": self.transition_type,
+            # 台面分析 (含详细分布)
             "countertop_color": self.countertop_color,
+            "countertop_color_detail": self.countertop_color_detail,
             "countertop_texture": self.countertop_texture,
+            "countertop_texture_detail": self.countertop_texture_detail,
+            # 光线分析
             "lighting": self.lighting,
             "contact_sheet": self.contact_sheet,
         }

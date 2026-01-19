@@ -761,35 +761,130 @@ def extract_visual_metrics(video_path, output_dir, frame_mode="edge"):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         contact_path = create_contact_sheet(key_frames, frame_mode, str(output_path))
         
-        # Aggregate results
+        # Helper function to create detailed distribution
+        def create_distribution(values, name="values"):
+            """Create detailed distribution with counts and percentages"""
+            if not values:
+                return {"dominant": "Unknown", "distribution": [], "all_values": []}
+            
+            counter = Counter(values)
+            total = len(values)
+            distribution = [
+                {
+                    "value": val,
+                    "count": count,
+                    "percentage": round(count / total * 100, 1)
+                }
+                for val, count in counter.most_common()
+            ]
+            dominant = counter.most_common(1)[0][0]
+            
+            # If multiple values with similar frequency, note it
+            if len(distribution) > 1:
+                top_pct = distribution[0]["percentage"]
+                second_pct = distribution[1]["percentage"]
+                if top_pct - second_pct < 15:  # Close competition
+                    dominant = f"{dominant} (mixed: {', '.join([d['value'] for d in distribution[:3]])})"
+            
+            return {
+                "dominant": dominant,
+                "distribution": distribution,
+                "unique_count": len(distribution),
+                "all_values": list(counter.keys())
+            }
+        
+        # Create detailed distributions for each metric
+        camera_angle_detail = create_distribution(camera_angles, "camera_angle")
+        ct_color_detail = create_distribution(ct_colors, "countertop_color")
+        ct_texture_detail = create_distribution(ct_textures, "countertop_texture")
+        lighting_type_detail = create_distribution([l["lighting_type"] for l in lighting_analyses], "lighting_type")
+        rule_thirds_detail = create_distribution([c["rule_of_thirds"] for c in composition_analyses], "rule_of_thirds")
+        balance_detail = create_distribution([c["composition_balance"] for c in composition_analyses], "composition_balance")
+        
+        # Per-frame color analysis summary
+        hue_per_frame = [hue_to_description(h) for h in hues]
+        sat_per_frame = [saturation_band(s) for s in sats]
+        bright_per_frame = [brightness_band(v) for v in vals]
+        contrast_per_frame = [contrast_description(std) for std in v_stds]
+        
+        hue_detail = create_distribution(hue_per_frame, "hue_family")
+        sat_detail = create_distribution(sat_per_frame, "saturation")
+        bright_detail = create_distribution(bright_per_frame, "brightness")
+        contrast_detail = create_distribution(contrast_per_frame, "contrast")
+        
+        # Aggregate results with detailed breakdowns
         result = {
             "fps": float(fps),
             "total_frames": int(total_frames),
             "duration": float(duration),
-            "hue_family": hue_to_description(np.mean(hues)),
-            "saturation_band": saturation_band(np.mean(sats)),
-            "brightness_band": brightness_band(np.mean(vals)),
-            "contrast": contrast_description(np.mean(v_stds)),
-            "camera_angle": Counter(camera_angles).most_common(1)[0][0] if camera_angles else "Unknown",
+            "sampled_frames": len(frames),
+            
+            # 色彩分析 (详细)
+            "hue_family": hue_detail["dominant"].split(" (")[0],  # Clean dominant
+            "hue_detail": hue_detail,
+            "saturation_band": sat_detail["dominant"].split(" (")[0],
+            "saturation_detail": sat_detail,
+            "brightness_band": bright_detail["dominant"].split(" (")[0],
+            "brightness_detail": bright_detail,
+            "contrast": contrast_detail["dominant"].split(" (")[0],
+            "contrast_detail": contrast_detail,
+            
+            # 色温
+            "cct_mean": float(np.mean(ccts)) if ccts else None,
+            "cct_std": float(np.std(ccts)) if ccts else None,
+            "cct_range": {"min": float(min(ccts)), "max": float(max(ccts))} if ccts else None,
+            
+            # 镜头角度 (详细)
+            "camera_angle": camera_angle_detail["dominant"].split(" (")[0],
+            "camera_angle_detail": camera_angle_detail,
+            
+            # 焦距
             "focal_length_tendency": focal_tendency,
+            
+            # 相机运动
             "camera_motion": camera_motion,
+            
+            # 构图分析 (详细)
             "composition": {
-                "rule_of_thirds": avg_rule_of_thirds,
-                "balance": avg_balance
+                "rule_of_thirds": rule_thirds_detail["dominant"].split(" (")[0],
+                "rule_of_thirds_detail": rule_thirds_detail,
+                "balance": balance_detail["dominant"].split(" (")[0],
+                "balance_detail": balance_detail
             },
+            
+            # 场景分类
             "scene_categories": scene_categories,
+            
+            # 剪辑分析
             "cuts": int(num_cuts),
             "cut_timestamps": [float(ts) for ts in cut_timestamps],
             "avg_shot_length": float(avg_shot_length),
             "transition_type": trans_type,
-            "countertop_color": Counter(ct_colors).most_common(1)[0][0] if ct_colors else "Unknown",
-            "countertop_texture": Counter(ct_textures).most_common(1)[0][0] if ct_textures else "Unknown",
-            "cct_mean": float(np.mean(ccts)) if ccts else None,
+            
+            # 台面分析 (详细)
+            "countertop_color": ct_color_detail["dominant"].split(" (")[0],
+            "countertop_color_detail": ct_color_detail,
+            "countertop_texture": ct_texture_detail["dominant"].split(" (")[0],
+            "countertop_texture_detail": ct_texture_detail,
+            
+            # 光线分析 (详细)
             "lighting": {
-                "type": dominant_lighting_type,
+                "type": lighting_type_detail["dominant"].split(" (")[0],
+                "type_detail": lighting_type_detail,
                 "natural_light_ratio": float(avg_natural_ratio),
-                "artificial_light_ratio": float(avg_artificial_ratio)
+                "artificial_light_ratio": float(avg_artificial_ratio),
+                "natural_light_std": float(np.std([l["natural_light_ratio"] for l in lighting_analyses])),
+                "per_frame_analysis": [
+                    {
+                        "frame": i,
+                        "type": l["lighting_type"],
+                        "natural": round(l["natural_light_ratio"], 2),
+                        "artificial": round(l["artificial_light_ratio"], 2)
+                    }
+                    for i, l in enumerate(lighting_analyses[:10])  # First 10 frames
+                ]
             },
+            
             "contact_sheet": contact_path
         }
         
