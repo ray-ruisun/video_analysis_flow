@@ -945,7 +945,7 @@ def gen_report(progress=gr.Progress()):
 
 def export_json():
     if STATE.video_path is None:
-        return f"❌ {t('upload_first')}", None
+        return f"❌ {t('upload_first')}", None, "// Please upload a video first"
     
     data = {
         "timestamp": datetime.now().isoformat(),
@@ -965,7 +965,20 @@ def export_json():
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=indent, ensure_ascii=False, default=str)
     
-    return f"{t('json_exported')}: {json_path.name}", str(json_path)
+    # Generate preview (truncated for large data)
+    preview_data = {
+        "timestamp": data["timestamp"],
+        "video_path": data["video_path"],
+        "visual": {"...": "see full JSON"} if data["visual"] else None,
+        "audio": {"...": "see full JSON"} if data["audio"] else None,
+        "asr": {"text_preview": data["asr"]["text"][:200] + "..." if data["asr"] and data["asr"].get("text") else None} if data["asr"] else None,
+        "yolo": {"...": "see full JSON"} if data["yolo"] else None,
+        "ai_detection": data["ai_detection"] if data["ai_detection"] else None,
+        "consensus": {"...": "see full JSON"} if data["consensus"] else None,
+    }
+    json_preview = json.dumps(preview_data, indent=2, ensure_ascii=False, default=str)
+    
+    return f"{t('json_exported')}: {json_path.name}", str(json_path), json_preview
 
 
 def update_config(
@@ -1366,8 +1379,8 @@ def create_ui():
                      yolo_result, ai_result, consensus_result, summary_box]
         )
         
-        gen_report_btn.click(fn=gen_report, outputs=[report_status, report_file, pdf_file])
-        export_json_btn.click(fn=export_json, outputs=[json_status, json_file])
+        gen_report_btn.click(fn=gen_report, outputs=[report_status, report_file, pdf_file, pdf_preview])
+        export_json_btn.click(fn=export_json, outputs=[json_status, json_file, json_preview])
         
         lang_radio.change(
             fn=switch_language,
