@@ -1705,15 +1705,23 @@ def export_json():
         json.dump(data, f, indent=indent, ensure_ascii=False, default=str)
     
     # Generate preview (truncated for large data)
+    videos_preview = []
+    for v in data.get("videos", []):
+        vp = {
+            "video_path": v.get("video_path"),
+            "visual": "..." if v.get("visual") else None,
+            "audio": "..." if v.get("audio") else None,
+            "asr": "..." if v.get("asr") else None,
+            "yolo": "..." if v.get("yolo") else None,
+            "ai_detection": v.get("ai_detection", {}).get("verdict") if v.get("ai_detection") else None,
+        }
+        videos_preview.append(vp)
+    
     preview_data = {
         "timestamp": data["timestamp"],
-        "video_path": data["video_path"],
-        "visual": {"...": "see full JSON"} if data["visual"] else None,
-        "audio": {"...": "see full JSON"} if data["audio"] else None,
-        "asr": {"text_preview": data["asr"]["text"][:200] + "..." if data["asr"] and data["asr"].get("text") else None} if data["asr"] else None,
-        "yolo": {"...": "see full JSON"} if data["yolo"] else None,
-        "ai_detection": data["ai_detection"] if data["ai_detection"] else None,
-        "consensus": {"...": "see full JSON"} if data["consensus"] else None,
+        "num_videos": data["num_videos"],
+        "videos": videos_preview,
+        "consensus": "..." if data.get("consensus") else None,
     }
     json_preview = json.dumps(preview_data, indent=2, ensure_ascii=False, default=str)
     

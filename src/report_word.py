@@ -3,13 +3,13 @@
 """
 Word report generation module (Enhanced Version - SOTA 2026)
 
-创建详细的 .docx 报告，包含:
-- 执行摘要
-- AI生成检测结果
-- 跨视频共识分析 (含详细分布和置信度)
-- 每个视频的详细分析 (含置信度)
-- 数据表格
-- 技术说明和建议
+Creates detailed .docx reports containing:
+- Executive Summary
+- AI Generation Detection Results
+- Cross-video Consensus Analysis (with distributions and confidence)
+- Per-video Detailed Analysis (with confidence scores)
+- Data Tables
+- Technical Notes and Recommendations
 
 Models:
 - CLIP (openai/clip-vit-large-patch14) - Scene Classification
@@ -36,7 +36,7 @@ from utils import format_value
 
 
 def set_cell_shading(cell, color: str):
-    """设置单元格背景色"""
+    """Set cell background shading color"""
     shading = OxmlElement('w:shd')
     shading.set(qn('w:fill'), color)
     cell._tc.get_or_add_tcPr().append(shading)
@@ -188,7 +188,7 @@ def add_distribution_text(doc, detail: Dict, prefix: str = "    "):
             value = item.get('value', 'Unknown')
             count = item.get('count', 0)
             pct = item.get('percentage', 0)
-            doc.add_paragraph(f"{prefix}• {value}: {count}次 ({pct}%)")
+            doc.add_paragraph(f"{prefix}• {value}: {count}x ({pct}%)")
 
 
 def add_consensus_section(doc, consensus):
