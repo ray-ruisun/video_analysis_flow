@@ -132,10 +132,12 @@ class AIDetectionConfig:
     # Enable/disable detection
     enabled: bool = True
     
-    # GenConViT (Face Deepfake Detection)
-    # Model: Deressa/GenConViT - ~95.8% accuracy on face deepfakes
-    use_genconvit: bool = True
-    genconvit_model: str = "Deressa/GenConViT"
+    # Deep-Fake-Detector-v2 (Face Deepfake Detection)
+    # Model: prithivMLmods/Deep-Fake-Detector-v2-Model - 92.12% accuracy
+    # Architecture: ViT (google/vit-base-patch16-224-in21k)
+    # Reference: https://huggingface.co/prithivMLmods/Deep-Fake-Detector-v2-Model
+    use_deepfake: bool = True
+    deepfake_model: str = "prithivMLmods/Deep-Fake-Detector-v2-Model"
     
     # CLIP Zero-Shot (Synthetic Detection)
     # Model: openai/clip-vit-large-patch14 - zero-shot synthetic detection
@@ -161,7 +163,7 @@ class AIDetectionConfig:
     fake_threshold: float = 0.5
     
     # Ensemble weights (adjusted - temporal disabled)
-    genconvit_weight: float = 0.5  # Face deepfake specialist (primary)
+    deepfake_weight: float = 0.5   # ViT-based deepfake specialist (primary)
     clip_weight: float = 0.4       # Zero-shot synthetic detection
     temporal_weight: float = 0.0   # Disabled - not reliable
     face_weight: float = 0.1       # No-face analysis

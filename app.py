@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Video Style Analysis - Gradio Web Interface
-SOTA Models: CLIP | CLAP | HuBERT | Whisper | YOLO11 | GenConViT
+SOTA Models: CLIP | CLAP | HuBERT | Whisper | YOLO11 | Deep-Fake-Detector-v2
 """
 
 import sys
@@ -35,7 +35,7 @@ TRANSLATIONS = {
     "en": {
         "title": "🎬 Video Style Analysis",
         "subtitle": "SOTA 2025/2026 | PyTorch + HuggingFace",
-        "models": "CLIP · CLAP · HuBERT · Whisper · YOLO11 · GenConViT",
+        "models": "CLIP · CLAP · HuBERT · Whisper · YOLO11 · DeepFake-v2",
         "upload_section": "📤 Upload",
         "settings_section": "⚙️ Settings",
         "preview_section": "🎬 Preview",
@@ -118,7 +118,7 @@ TRANSLATIONS = {
     "zh": {
         "title": "🎬 视频风格分析系统",
         "subtitle": "SOTA 2025/2026 | PyTorch + HuggingFace",
-        "models": "CLIP · CLAP · HuBERT · Whisper · YOLO11 · GenConViT",
+        "models": "CLIP · CLAP · HuBERT · Whisper · YOLO11 · DeepFake-v2",
         "upload_section": "📤 上传",
         "settings_section": "⚙️ 设置",
         "preview_section": "🎬 预览",
@@ -442,7 +442,7 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
 
 | Model | Score | Status |
 |:---|:---:|:---:|
-| GenConViT (Deepfake) | **{output.genconvit_score:.1%}** | {'✅' if output.genconvit_available else '❌'} |
+| DeepFake-v2 (ViT) | **{output.deepfake_score:.1%}** | {'✅' if output.deepfake_available else '❌'} |
 | CLIP (Synthetic) | **{output.clip_synthetic_score:.1%}** | {'✅' if output.clip_available else '❌'} |
 | Temporal (Motion) | **{output.temporal_score:.1%}** | ✅ |
 
@@ -573,11 +573,11 @@ def run_ai_detection(progress=gr.Progress()):
     if not cfg.enabled:
         return "❌ AI Detection is disabled in configuration"
     
-    progress(0.1, desc=f"{t('loading')} GenConViT + CLIP...")
+    progress(0.1, desc=f"{t('loading')} DeepFake-v2 + CLIP...")
     step = AIDetectionStep()
     input_data = AIDetectionInput(
         video_path=STATE.video_path,
-        use_genconvit=cfg.use_genconvit,
+        use_deepfake=cfg.use_deepfake,
         use_clip=cfg.use_clip,
         use_temporal=cfg.use_temporal,
         use_face_detection=cfg.use_face_detection,
@@ -585,7 +585,7 @@ def run_ai_detection(progress=gr.Progress()):
         temporal_frames=cfg.temporal_frames,
         fake_threshold=cfg.fake_threshold,
         no_face_threshold=cfg.no_face_threshold,
-        genconvit_weight=cfg.genconvit_weight,
+        deepfake_weight=cfg.deepfake_weight,
         clip_weight=cfg.clip_weight,
         temporal_weight=cfg.temporal_weight,
         face_weight=cfg.face_weight,
@@ -729,8 +729,8 @@ def update_config(
     visual_frames, visual_threshold,
     yolo_model, yolo_conf, yolo_frames,
     asr_model, asr_beam,
-    ai_enabled, ai_genconvit, ai_clip, ai_temporal, ai_face,
-    ai_threshold, ai_genconvit_weight, ai_clip_weight, ai_temporal_weight, ai_face_weight
+    ai_enabled, ai_deepfake, ai_clip, ai_temporal, ai_face,
+    ai_threshold, ai_deepfake_weight, ai_clip_weight, ai_temporal_weight, ai_face_weight
 ):
     """Update configuration from UI controls"""
     # Visual
@@ -748,12 +748,12 @@ def update_config(
     
     # AI Detection (SOTA 2025/2026)
     STATE.config.ai_detection.enabled = ai_enabled
-    STATE.config.ai_detection.use_genconvit = ai_genconvit
+    STATE.config.ai_detection.use_deepfake = ai_deepfake
     STATE.config.ai_detection.use_clip = ai_clip
     STATE.config.ai_detection.use_temporal = ai_temporal
     STATE.config.ai_detection.use_face_detection = ai_face
     STATE.config.ai_detection.fake_threshold = float(ai_threshold)
-    STATE.config.ai_detection.genconvit_weight = float(ai_genconvit_weight)
+    STATE.config.ai_detection.deepfake_weight = float(ai_deepfake_weight)
     STATE.config.ai_detection.clip_weight = float(ai_clip_weight)
     STATE.config.ai_detection.temporal_weight = float(ai_temporal_weight)
     STATE.config.ai_detection.face_weight = float(ai_face_weight)
@@ -898,15 +898,15 @@ def create_ui():
                         cfg_ai_enabled = gr.Checkbox(value=cfg.ai_detection.enabled, label=t('ai_enabled'))
                         
                         gr.Markdown("**Models**")
-                        cfg_ai_genconvit = gr.Checkbox(value=cfg.ai_detection.use_genconvit, label="GenConViT (Deepfake) ⭐")
+                        cfg_ai_deepfake = gr.Checkbox(value=cfg.ai_detection.use_deepfake, label="DeepFake-v2 (ViT) ⭐")
                         cfg_ai_clip = gr.Checkbox(value=cfg.ai_detection.use_clip, label="CLIP (Synthetic) ⭐")
-                        cfg_ai_temporal = gr.Checkbox(value=cfg.ai_detection.use_temporal, label="Temporal (Motion) ⚠️ 不准确")
+                        cfg_ai_temporal = gr.Checkbox(value=cfg.ai_detection.use_temporal, label="Temporal (Motion) ⚠️ Unreliable")
                         cfg_ai_face = gr.Checkbox(value=cfg.ai_detection.use_face_detection, label="Face Detection")
                         
                         cfg_ai_threshold = gr.Slider(0.1, 0.9, value=cfg.ai_detection.fake_threshold, step=0.05, label="Fake Threshold")
                         
                         gr.Markdown("### ⚖️ Ensemble Weights")
-                        cfg_ai_genconvit_weight = gr.Slider(0, 1, value=cfg.ai_detection.genconvit_weight, step=0.1, label="GenConViT Weight")
+                        cfg_ai_deepfake_weight = gr.Slider(0, 1, value=cfg.ai_detection.deepfake_weight, step=0.1, label="DeepFake-v2 Weight")
                         cfg_ai_clip_weight = gr.Slider(0, 1, value=cfg.ai_detection.clip_weight, step=0.1, label="CLIP Weight")
                         cfg_ai_temporal_weight = gr.Slider(0, 1, value=cfg.ai_detection.temporal_weight, step=0.1, label="Temporal Weight")
                         cfg_ai_face_weight = gr.Slider(0, 1, value=cfg.ai_detection.face_weight, step=0.1, label="Face Weight")
@@ -920,8 +920,8 @@ def create_ui():
                         cfg_visual_frames, cfg_visual_threshold,
                         cfg_yolo_model, cfg_yolo_conf, cfg_yolo_frames,
                         cfg_asr_model, cfg_asr_beam,
-                        cfg_ai_enabled, cfg_ai_genconvit, cfg_ai_clip, cfg_ai_temporal, cfg_ai_face,
-                        cfg_ai_threshold, cfg_ai_genconvit_weight, cfg_ai_clip_weight, cfg_ai_temporal_weight, cfg_ai_face_weight
+                        cfg_ai_enabled, cfg_ai_deepfake, cfg_ai_clip, cfg_ai_temporal, cfg_ai_face,
+                        cfg_ai_threshold, cfg_ai_deepfake_weight, cfg_ai_clip_weight, cfg_ai_temporal_weight, cfg_ai_face_weight
                     ],
                     outputs=[config_status]
                 )

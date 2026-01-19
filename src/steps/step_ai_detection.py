@@ -4,9 +4,9 @@
 AI Detection Step - Multi-Model Ensemble (SOTA 2025/2026)
 
 Models:
-- GenConViT: Face deepfake detection (~95.8% accuracy)
+- Deep-Fake-Detector-v2: ViT-based deepfake detection (92.12% accuracy)
 - CLIP: Zero-shot synthetic detection
-- Temporal Analysis: Motion inconsistency
+- Temporal Analysis: Motion inconsistency (disabled by default)
 - Face Detection: No-face video analysis
 """
 
@@ -24,9 +24,9 @@ class AIDetectionInput(StepInput):
     video_path: Path = None
     
     # Model selection
-    use_genconvit: bool = True
+    use_deepfake: bool = True
     use_clip: bool = True
-    use_temporal: bool = True
+    use_temporal: bool = False  # Disabled by default - unreliable
     use_face_detection: bool = True
     
     # Frame sampling
@@ -38,9 +38,9 @@ class AIDetectionInput(StepInput):
     no_face_threshold: float = 0.9
     
     # Ensemble weights
-    genconvit_weight: float = 0.4
-    clip_weight: float = 0.3
-    temporal_weight: float = 0.2
+    deepfake_weight: float = 0.5
+    clip_weight: float = 0.4
+    temporal_weight: float = 0.0  # Disabled
     face_weight: float = 0.1
 
 
@@ -53,8 +53,8 @@ class AIDetectionOutput(StepOutput):
     verdict: str = "Unknown"  # Real, Deepfake, Synthetic, Suspicious, Unknown
     
     # Individual model scores
-    genconvit_score: float = 0.0
-    genconvit_available: bool = False
+    deepfake_score: float = 0.0
+    deepfake_available: bool = False
     
     clip_synthetic_score: float = 0.0
     clip_available: bool = False
@@ -81,8 +81,8 @@ class AIDetectionOutput(StepOutput):
             "is_ai_generated": self.is_ai_generated,
             "confidence": self.confidence,
             "verdict": self.verdict,
-            "genconvit_score": self.genconvit_score,
-            "genconvit_available": self.genconvit_available,
+            "deepfake_score": self.deepfake_score,
+            "deepfake_available": self.deepfake_available,
             "clip_synthetic_score": self.clip_synthetic_score,
             "clip_available": self.clip_available,
             "temporal_score": self.temporal_score,
@@ -101,10 +101,12 @@ class AIDetectionStep(PipelineStep[AIDetectionInput, AIDetectionOutput]):
     AI-Generated Video Detection Step (SOTA 2025/2026)
     
     Multi-model ensemble:
-    1. GenConViT - Face deepfake detection (~95.8% accuracy)
+    1. Deep-Fake-Detector-v2 - ViT-based deepfake detection (92.12% accuracy)
     2. CLIP - Zero-shot synthetic detection
-    3. Temporal Analysis - Motion inconsistency detection
+    3. Temporal Analysis - Motion inconsistency (disabled by default)
     4. Face Detection - No-face video analysis
+    
+    Reference: https://huggingface.co/prithivMLmods/Deep-Fake-Detector-v2-Model
     """
     
     @property
@@ -113,7 +115,7 @@ class AIDetectionStep(PipelineStep[AIDetectionInput, AIDetectionOutput]):
     
     @property
     def description(self) -> str:
-        return "AI生成检测 (GenConViT + CLIP + Temporal)"
+        return "AI生成检测 (DeepFake-v2 + CLIP)"
     
     def run(self, input_data: AIDetectionInput) -> AIDetectionOutput:
         """Run AI detection analysis"""
@@ -124,7 +126,7 @@ class AIDetectionStep(PipelineStep[AIDetectionInput, AIDetectionOutput]):
             
             result = detect_ai_generated_video(
                 video_path=input_data.video_path,
-                use_genconvit=input_data.use_genconvit,
+                use_deepfake=input_data.use_deepfake,
                 use_clip=input_data.use_clip,
                 use_temporal=input_data.use_temporal,
                 use_face_detection=input_data.use_face_detection,
@@ -132,7 +134,7 @@ class AIDetectionStep(PipelineStep[AIDetectionInput, AIDetectionOutput]):
                 temporal_frames=input_data.temporal_frames,
                 fake_threshold=input_data.fake_threshold,
                 no_face_threshold=input_data.no_face_threshold,
-                genconvit_weight=input_data.genconvit_weight,
+                deepfake_weight=input_data.deepfake_weight,
                 clip_weight=input_data.clip_weight,
                 temporal_weight=input_data.temporal_weight,
                 face_weight=input_data.face_weight,
@@ -143,8 +145,8 @@ class AIDetectionStep(PipelineStep[AIDetectionInput, AIDetectionOutput]):
                 is_ai_generated=result.is_ai_generated,
                 confidence=result.confidence,
                 verdict=result.verdict,
-                genconvit_score=result.genconvit_score,
-                genconvit_available=result.genconvit_available,
+                deepfake_score=result.deepfake_score,
+                deepfake_available=result.deepfake_available,
                 clip_synthetic_score=result.clip_synthetic_score,
                 clip_available=result.clip_available,
                 temporal_score=result.temporal_score,
@@ -191,7 +193,7 @@ class AIDetectionStep(PipelineStep[AIDetectionInput, AIDetectionOutput]):
         logger.info(
             f"  → {emoji} {output.verdict} | "
             f"Conf: {output.confidence:.1%} | "
-            f"GenConViT: {output.genconvit_score:.1%} | "
+            f"DeepFake-v2: {output.deepfake_score:.1%} | "
             f"CLIP: {output.clip_synthetic_score:.1%} | "
             f"Temporal: {output.temporal_score:.1%} | "
             f"NoFace: {output.no_face_ratio:.1%}"

@@ -4,13 +4,13 @@
 AI-Generated Video Detection Module (SOTA 2025/2026)
 
 Multi-model ensemble detection:
-1. GenConViT - Face deepfake detection (HuggingFace)
+1. Deep-Fake-Detector-v2 - Face deepfake detection (ViT-based, 92.12% acc)
 2. CLIP-based - Zero-shot synthetic detection
-3. Temporal Analysis - Motion inconsistency detection
+3. Temporal Analysis - Motion inconsistency detection (disabled by default)
 4. Face Detection - No-face video analysis
 
 Models:
-- Deressa/GenConViT (video-level deepfake, ~95.8% acc)
+- prithivMLmods/Deep-Fake-Detector-v2-Model (ViT-based deepfake detector)
 - openai/clip-vit-large-patch14 (zero-shot synthetic detection)
 - OpenCV (face detection, temporal analysis)
 """
@@ -36,8 +36,8 @@ class AIDetectionResult:
     verdict: str = "Real"  # Real, Deepfake, Synthetic, Suspicious, Unknown
     
     # Individual model scores
-    genconvit_score: float = 0.0
-    genconvit_available: bool = False
+    deepfake_score: float = 0.0
+    deepfake_available: bool = False
     
     clip_synthetic_score: float = 0.0
     clip_available: bool = False
@@ -63,8 +63,8 @@ class AIDetectionResult:
             "is_ai_generated": self.is_ai_generated,
             "confidence": self.confidence,
             "verdict": self.verdict,
-            "genconvit_score": self.genconvit_score,
-            "genconvit_available": self.genconvit_available,
+            "deepfake_score": self.deepfake_score,
+            "deepfake_available": self.deepfake_available,
             "clip_synthetic_score": self.clip_synthetic_score,
             "clip_available": self.clip_available,
             "temporal_score": self.temporal_score,
@@ -93,53 +93,43 @@ def _get_device():
 # =============================================================================
 # Model Loaders
 # =============================================================================
-def _load_genconvit():
-    """Load GenConViT deepfake detector
+def _load_deepfake_detector():
+    """Load Deep-Fake-Detector-v2-Model
     
-    Note: GenConViT on HuggingFace doesn't have a preprocessor_config.json,
-    so we use a generic ViT processor as fallback.
+    Model: prithivMLmods/Deep-Fake-Detector-v2-Model
+    Architecture: Vision Transformer (ViT) - google/vit-base-patch16-224-in21k
+    Accuracy: 92.12%
+    Output: "Realism" or "Deepfake"
+    
+    Reference: https://huggingface.co/prithivMLmods/Deep-Fake-Detector-v2-Model
     """
-    if "genconvit" not in _MODELS:
+    if "deepfake" not in _MODELS:
         try:
-            from transformers import AutoImageProcessor, AutoModelForImageClassification, ViTImageProcessor
+            from transformers import ViTForImageClassification, ViTImageProcessor
             import torch
             
-            model_name = "Deressa/GenConViT"
-            logger.info(f"Loading GenConViT: {model_name}")
+            model_name = "prithivMLmods/Deep-Fake-Detector-v2-Model"
+            logger.info(f"Loading Deep-Fake-Detector-v2: {model_name}")
             
-            # Try to load model first
-            model = AutoModelForImageClassification.from_pretrained(model_name)
-            
-            # GenConViT doesn't have a preprocessor_config.json
-            # Use a generic ViT processor with standard settings
-            try:
-                processor = AutoImageProcessor.from_pretrained(model_name)
-            except Exception:
-                logger.info("Using generic ViT processor for GenConViT")
-                # Use standard ViT processor settings (224x224, normalize)
-                processor = ViTImageProcessor(
-                    size={"height": 224, "width": 224},
-                    image_mean=[0.485, 0.456, 0.406],
-                    image_std=[0.229, 0.224, 0.225],
-                    do_resize=True,
-                    do_normalize=True
-                )
+            processor = ViTImageProcessor.from_pretrained(model_name)
+            model = ViTForImageClassification.from_pretrained(model_name)
             
             device = _get_device()
             model = model.to(device)
             model.eval()
             
-            _MODELS["genconvit"] = {
+            _MODELS["deepfake"] = {
                 "processor": processor,
                 "model": model,
-                "device": device
+                "device": device,
+                "id2label": model.config.id2label
             }
-            logger.info("GenConViT loaded successfully")
+            logger.info(f"Deep-Fake-Detector-v2 loaded successfully. Labels: {model.config.id2label}")
         except Exception as e:
-            logger.warning(f"Failed to load GenConViT: {e}")
-            _MODELS["genconvit"] = None
+            logger.warning(f"Failed to load Deep-Fake-Detector-v2: {e}")
+            _MODELS["deepfake"] = None
     
-    return _MODELS.get("genconvit")
+    return _MODELS.get("deepfake")
 
 
 def _load_clip_detector():
@@ -233,9 +223,13 @@ def extract_consecutive_frames(video_path: Path, start_ratio: float = 0.3, num_f
 # =============================================================================
 # Detection Methods
 # =============================================================================
-def detect_with_genconvit(frames: List[np.ndarray]) -> Tuple[float, List[float]]:
-    """Detect deepfakes using GenConViT"""
-    model_data = _load_genconvit()
+def detect_with_deepfake_detector(frames: List[np.ndarray]) -> Tuple[float, List[float]]:
+    """Detect deepfakes using Deep-Fake-Detector-v2-Model
+    
+    Model outputs "Realism" (real) or "Deepfake" (fake)
+    Returns the probability of being a deepfake.
+    """
+    model_data = _load_deepfake_detector()
     
     if model_data is None:
         return 0.0, []
@@ -246,6 +240,7 @@ def detect_with_genconvit(frames: List[np.ndarray]) -> Tuple[float, List[float]]
     processor = model_data["processor"]
     model = model_data["model"]
     device = model_data["device"]
+    id2label = model_data["id2label"]
     
     scores = []
     
@@ -257,25 +252,24 @@ def detect_with_genconvit(frames: List[np.ndarray]) -> Tuple[float, List[float]]
                 outputs = model(**inputs)
                 probs = torch.softmax(outputs.logits, dim=-1)
                 
-                # Check model labels
-                labels = model.config.id2label if hasattr(model.config, 'id2label') else {}
-                
-                # Find fake probability (usually index 1 or labeled as 'fake')
+                # Find "Deepfake" class probability
                 fake_prob = 0.0
-                if len(probs[0]) >= 2:
-                    # Assume index 1 is fake
-                    fake_prob = probs[0, 1].item()
-                    
-                    # Check labels if available
-                    for idx, prob in enumerate(probs[0]):
-                        label = labels.get(idx, "").lower()
-                        if "fake" in label or "synthetic" in label:
-                            fake_prob = prob.item()
-                            break
+                for idx, label in id2label.items():
+                    if "deepfake" in label.lower() or "fake" in label.lower():
+                        fake_prob = probs[0, idx].item()
+                        break
+                
+                # If no "Deepfake" label found, assume index 1 is fake
+                if fake_prob == 0.0 and len(probs[0]) >= 2:
+                    # Check if "Realism" is at index 0
+                    if "realism" in id2label.get(0, "").lower() or "real" in id2label.get(0, "").lower():
+                        fake_prob = probs[0, 1].item()
+                    else:
+                        fake_prob = probs[0, 1].item()
                 
                 scores.append(fake_prob)
             except Exception as e:
-                logger.debug(f"GenConViT frame error: {e}")
+                logger.debug(f"Deepfake detector frame error: {e}")
                 scores.append(0.0)
     
     avg_score = np.mean(scores) if scores else 0.0
@@ -347,7 +341,11 @@ def detect_with_clip(frames: List[np.ndarray]) -> float:
 
 
 def detect_temporal_anomalies(frames: List[np.ndarray]) -> Tuple[float, int]:
-    """Detect temporal inconsistencies in video (AI videos often have flickering)"""
+    """Detect temporal inconsistencies in video
+    
+    Note: This method is less reliable and disabled by default.
+    AI videos often have flickering, but this also catches natural motion.
+    """
     if len(frames) < 3:
         return 0.0, 0
     
@@ -435,9 +433,9 @@ def detect_faces(frames: List[np.ndarray], min_size: int = 30) -> Tuple[int, int
 def detect_ai_generated_video(
     video_path: Path,
     # Model selection
-    use_genconvit: bool = True,
+    use_deepfake: bool = True,
     use_clip: bool = True,
-    use_temporal: bool = True,
+    use_temporal: bool = False,  # Disabled by default - less reliable
     use_face_detection: bool = True,
     # Frame sampling
     num_frames: int = 16,
@@ -446,19 +444,21 @@ def detect_ai_generated_video(
     fake_threshold: float = 0.5,
     no_face_threshold: float = 0.9,
     # Ensemble weights
-    genconvit_weight: float = 0.4,
-    clip_weight: float = 0.3,
-    temporal_weight: float = 0.2,
+    deepfake_weight: float = 0.5,
+    clip_weight: float = 0.4,
+    temporal_weight: float = 0.0,  # Set to 0 by default
     face_weight: float = 0.1,
 ) -> AIDetectionResult:
     """
     Comprehensive AI-generated video detection using multiple models
     
     Ensemble approach:
-    1. GenConViT - Face deepfake detection
+    1. Deep-Fake-Detector-v2 - ViT-based deepfake detection (92.12% accuracy)
     2. CLIP - Zero-shot synthetic detection
-    3. Temporal Analysis - Motion inconsistency
+    3. Temporal Analysis - Motion inconsistency (disabled by default)
     4. Face Detection - No-face video analysis
+    
+    Reference: https://huggingface.co/prithivMLmods/Deep-Fake-Detector-v2-Model
     """
     result = AIDetectionResult()
     
@@ -476,19 +476,19 @@ def detect_ai_generated_video(
     scores = []
     weights = []
     
-    # 1. GenConViT Detection (Face Deepfake)
-    if use_genconvit:
-        logger.info("Running GenConViT detection...")
-        genconvit_score, frame_scores = detect_with_genconvit(frames)
-        result.genconvit_score = genconvit_score
+    # 1. Deep-Fake-Detector-v2 Detection
+    if use_deepfake:
+        logger.info("Running Deep-Fake-Detector-v2...")
+        deepfake_score, frame_scores = detect_with_deepfake_detector(frames)
+        result.deepfake_score = deepfake_score
         result.frame_scores = frame_scores
-        result.genconvit_available = genconvit_score > 0 or len(frame_scores) > 0
+        result.deepfake_available = deepfake_score > 0 or len(frame_scores) > 0
         
-        if result.genconvit_available:
-            scores.append(genconvit_score)
-            weights.append(genconvit_weight)
-            result.models_used.append("GenConViT")
-            logger.info(f"GenConViT score: {genconvit_score:.3f}")
+        if result.deepfake_available:
+            scores.append(deepfake_score)
+            weights.append(deepfake_weight)
+            result.models_used.append("Deep-Fake-Detector-v2")
+            logger.info(f"Deepfake score: {deepfake_score:.3f}")
     
     # 2. CLIP Zero-Shot Detection (Synthetic)
     if use_clip:
@@ -503,8 +503,8 @@ def detect_ai_generated_video(
             result.models_used.append("CLIP-ZeroShot")
             logger.info(f"CLIP synthetic score: {clip_score:.3f}")
     
-    # 3. Temporal Analysis (Motion Inconsistency)
-    if use_temporal:
+    # 3. Temporal Analysis (Motion Inconsistency) - Disabled by default
+    if use_temporal and temporal_weight > 0:
         logger.info("Running temporal analysis...")
         consecutive_frames = extract_consecutive_frames(video_path, num_frames=temporal_frames)
         if consecutive_frames:
@@ -550,7 +550,7 @@ def detect_ai_generated_video(
         if ensemble_score >= 0.7:
             result.is_ai_generated = True
             # Classify type based on which model contributed most
-            if result.genconvit_score > 0.6:
+            if result.deepfake_score > 0.6:
                 result.verdict = "Deepfake"
             elif result.no_face_ratio > no_face_threshold and result.clip_synthetic_score > 0.5:
                 result.verdict = "Synthetic"
@@ -569,7 +569,7 @@ def detect_ai_generated_video(
     # Store analysis details
     result.analysis_details = {
         "weights": {
-            "genconvit": genconvit_weight,
+            "deepfake": deepfake_weight,
             "clip": clip_weight,
             "temporal": temporal_weight,
             "face": face_weight
@@ -579,7 +579,8 @@ def detect_ai_generated_video(
             "no_face": no_face_threshold
         },
         "frames_sampled": num_frames,
-        "temporal_frames": temporal_frames
+        "temporal_frames": temporal_frames,
+        "model": "prithivMLmods/Deep-Fake-Detector-v2-Model"
     }
     
     logger.info(f"AI Detection complete: {result.verdict} (confidence: {result.confidence:.1%})")
@@ -603,7 +604,7 @@ if __name__ == "__main__":
         print(f"AI Detection Result: {result['verdict']}")
         print(f"{'='*50}")
         print(f"Confidence: {result['confidence']:.1%}")
-        print(f"GenConViT Score: {result['genconvit_score']:.1%}")
+        print(f"Deepfake Score: {result['deepfake_score']:.1%}")
         print(f"CLIP Synthetic Score: {result['clip_synthetic_score']:.1%}")
         print(f"Temporal Score: {result['temporal_score']:.1%}")
         print(f"No-Face Ratio: {result['no_face_ratio']:.1%}")

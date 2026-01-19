@@ -16,7 +16,7 @@ torch>=2.0.0
 torchvision>=0.15.0
 torchaudio>=2.0.0
 
-# HuggingFace (CLIP, CLAP, HuBERT, GenConViT)
+# HuggingFace (CLIP, CLAP, HuBERT, DeepFake-v2)
 transformers>=4.40.0
 
 # Visual Analysis
@@ -36,10 +36,10 @@ faster-whisper>=1.0.0
 # Web UI
 gradio>=4.0.0
 
-# AI Detection (GenConViT, Deepfake)
+# AI Detection (SOTA 2025/2026)
 # Models auto-downloaded from HuggingFace:
-# - Deressa/GenConViT (video-level deepfake)
-# - prithivMLmods/deepfake-detector-model-v1 (frame-level)
+# - prithivMLmods/Deep-Fake-Detector-v2-Model (ViT-based, 92.12% accuracy)
+# - openai/clip-vit-large-patch14 (zero-shot synthetic detection)
 
 # Optional (for faster inference)
 # accelerate>=0.25.0
