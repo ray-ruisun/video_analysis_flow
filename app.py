@@ -856,7 +856,7 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
 def upload_video(video_file):
     """Upload and add a video to the list (doesn't reset existing videos)"""
     if video_file is None:
-        return t('upload_first'), None, [], get_video_list_html()
+        return t('upload_first'), None, [], get_video_list_html(), gr.update(choices=[], value=None)
     
     import shutil
     video_path = Path(video_file)
@@ -895,7 +895,12 @@ def upload_video(video_file):
     status += t('audio_extracted') if audio_path else t('audio_failed')
     
     audio_str = str(audio_path) if audio_path else None
-    return status, audio_str, frame_paths, get_video_list_html()
+    
+    # Get updated choices and set current value
+    choices = get_video_choices()
+    current_value = choices[idx] if idx < len(choices) else None
+    
+    return status, audio_str, frame_paths, get_video_list_html(), gr.update(choices=choices, value=current_value)
 
 
 def delete_video(index: int):
@@ -929,7 +934,7 @@ def delete_video(index: int):
 def clear_all_videos():
     """Clear all videos"""
     STATE.reset()
-    return get_video_list_html(), t('no_videos'), None, [], get_video_choices()
+    return get_video_list_html(), t('no_videos'), None, [], gr.update(choices=[], value=None)
 
 
 def select_video_by_choice(choice: str):
@@ -963,7 +968,7 @@ def select_video_by_choice(choice: str):
 def delete_current_video():
     """Delete the currently selected video"""
     if not STATE.videos:
-        return get_video_list_html(), t('no_videos'), None, [], get_video_choices()
+        return get_video_list_html(), t('no_videos'), None, [], gr.update(choices=[], value=None)
     
     idx = STATE.current_index
     if 0 <= idx < len(STATE.videos):
@@ -981,13 +986,15 @@ def delete_current_video():
             frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames) if video.video_path else []
             audio_path = str(video.audio_path) if video.audio_path else None
             status = f"📹 {t('video_n').format(n=STATE.current_index+1)}: {video.video_path.name if video.video_path else 'N/A'}"
-            return get_video_list_html(), status, audio_path, frame_paths, get_video_choices()
+            choices = get_video_choices()
+            current_value = choices[STATE.current_index] if STATE.current_index < len(choices) else None
+            return get_video_list_html(), status, audio_path, frame_paths, gr.update(choices=choices, value=current_value)
         else:
             STATE.video_path = None
             STATE.audio_path = None
-            return get_video_list_html(), t('no_videos'), None, [], get_video_choices()
+            return get_video_list_html(), t('no_videos'), None, [], gr.update(choices=[], value=None)
     
-    return get_video_list_html(), t('no_videos'), None, [], get_video_choices()
+    return get_video_list_html(), t('no_videos'), None, [], gr.update(choices=[], value=None)
 
 
 def get_video_choices() -> List[str]:
@@ -1213,7 +1220,7 @@ def run_ai_detection(progress=gr.Progress()):
 def run_batch_analysis(language: str, progress=gr.Progress()):
     """Analyze all videos in the list for cross-video comparison"""
     if not STATE.videos:
-        return (f"❌ {t('no_videos')}", None, "", "", "", "", "", "", get_video_list_html(), get_video_choices())
+        return (f"❌ {t('no_videos')}", None, "", "", "", "", "", "", get_video_list_html(), gr.update(choices=[], value=None))
     
     total_videos = len(STATE.videos)
     results = []
@@ -1265,8 +1272,10 @@ def run_batch_analysis(language: str, progress=gr.Progress()):
     ai_result = format_ai_detection(STATE.ai_output) if STATE.ai_output else "*Not run*"
     contact = STATE.visual_output.contact_sheet if STATE.visual_output else None
     
+    choices = get_video_choices()
+    current_value = choices[STATE.current_index] if STATE.current_index < len(choices) else None
     return (visual_result, contact, audio_result, asr_result, yolo_result, 
-            ai_result, consensus_result, summary, get_video_list_html(), get_video_choices())
+            ai_result, consensus_result, summary, get_video_list_html(), gr.update(choices=choices, value=current_value))
 
 
 def run_consensus():
@@ -1351,9 +1360,10 @@ def run_all(language: str, progress=gr.Progress()):
     
     summary = "\n".join(lines)
     video_list = get_video_list_html()
-    video_choices = get_video_choices()
+    choices = get_video_choices()
+    current_value = choices[STATE.current_index] if STATE.current_index < len(choices) else None
     
-    return visual_result, contact, audio_result, asr_result, yolo_result, ai_result, consensus_result, summary, video_list, video_choices
+    return visual_result, contact, audio_result, asr_result, yolo_result, ai_result, consensus_result, summary, video_list, gr.update(choices=choices, value=current_value)
 
 
 def gen_report(progress=gr.Progress()):
@@ -1577,8 +1587,10 @@ def create_ui():
                         with gr.Row():
                             video_selector = gr.Dropdown(
                                 choices=get_video_choices(),
+                                value=None,
                                 label=t('select_video'),
                                 interactive=True,
+                                allow_custom_value=True,
                                 scale=3
                             )
                             delete_video_btn = gr.Button("🗑️", size="sm", variant="secondary", scale=1)
@@ -1861,9 +1873,7 @@ def create_ui():
         
         # ========== Event Handlers ==========
         video_input.change(fn=upload_video, inputs=[video_input],
-                          outputs=[upload_status, audio_player, frame_gallery, video_list_html]).then(
-            fn=get_video_choices, inputs=[], outputs=[video_selector]
-        )
+                          outputs=[upload_status, audio_player, frame_gallery, video_list_html, video_selector])
         
         video_selector.change(fn=select_video_by_choice, inputs=[video_selector],
                              outputs=[upload_status, audio_player, frame_gallery])
