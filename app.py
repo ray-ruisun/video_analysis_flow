@@ -419,29 +419,35 @@ def format_visual(output: VisualOutput) -> str:
         for s in output.scene_categories[:5]
     ])
     
+    # Helper to format distribution (handles both dict and list)
+    def format_dist(detail, key='distribution'):
+        dist = detail.get(key, {}) if detail else {}
+        conf = detail.get('confidence', 0) if detail else 0
+        if isinstance(dist, dict) and dist:
+            sorted_items = sorted(dist.items(), key=lambda x: x[1], reverse=True)[:3]
+            dist_str = " | ".join([f"{k}: {v:.0%}" for k, v in sorted_items])
+        elif isinstance(dist, list) and dist:
+            # List of dicts like [{'label': 'x', 'count': 10, 'percentage': 0.5}, ...]
+            dist_str = " | ".join([f"{d.get('label', d.get('name', '?'))}: {d.get('percentage', d.get('count', 0)):.0%}" for d in dist[:3]])
+        else:
+            dist_str = "N/A"
+        return conf, dist_str
+    
     # Camera angle distribution with confidence
     camera_detail = output.camera_angle_detail or {}
-    camera_dist = camera_detail.get('distribution', {})
-    camera_conf = camera_detail.get('confidence', 0)
-    camera_dist_str = " | ".join([f"{k}: {v:.0%}" for k, v in sorted(camera_dist.items(), key=lambda x: x[1], reverse=True)[:3]]) if camera_dist else "N/A"
+    camera_conf, camera_dist_str = format_dist(camera_detail)
     
     # Hue distribution with confidence
     hue_detail = output.hue_detail or {}
-    hue_dist = hue_detail.get('distribution', {})
-    hue_conf = hue_detail.get('confidence', 0)
-    hue_dist_str = " | ".join([f"{k}: {v:.0%}" for k, v in sorted(hue_dist.items(), key=lambda x: x[1], reverse=True)[:3]]) if hue_dist else "N/A"
+    hue_conf, hue_dist_str = format_dist(hue_detail)
     
     # Saturation distribution
     sat_detail = output.saturation_detail or {}
-    sat_dist = sat_detail.get('distribution', {})
-    sat_conf = sat_detail.get('confidence', 0)
-    sat_dist_str = " | ".join([f"{k}: {v:.0%}" for k, v in sorted(sat_dist.items(), key=lambda x: x[1], reverse=True)[:3]]) if sat_dist else "N/A"
+    sat_conf, sat_dist_str = format_dist(sat_detail)
     
     # Brightness distribution
     bright_detail = output.brightness_detail or {}
-    bright_dist = bright_detail.get('distribution', {})
-    bright_conf = bright_detail.get('confidence', 0)
-    bright_dist_str = " | ".join([f"{k}: {v:.0%}" for k, v in sorted(bright_dist.items(), key=lambda x: x[1], reverse=True)[:3]]) if bright_dist else "N/A"
+    bright_conf, bright_dist_str = format_dist(bright_detail)
     
     # CCT interpretation
     cct = output.cct_mean
