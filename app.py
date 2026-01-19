@@ -496,8 +496,7 @@ def run_visual(progress=gr.Progress()):
     input_data = VideoInput(
         video_path=STATE.video_path,
         work_dir=STATE.work_dir,
-        frame_mode=cfg.frame_mode,
-        target_frames=cfg.target_frames
+        frame_mode=cfg.frame_mode
     )
     
     progress(0.4, desc=f"{t('analyzing')}...")
@@ -785,10 +784,7 @@ def switch_language(lang: str):
 def create_ui():
     cfg = STATE.config
     
-    with gr.Blocks(
-        title="Video Style Analysis",
-        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")
-    ) as demo:
+    with gr.Blocks(title="Video Style Analysis") as demo:
         
         # Header
         header_md = gr.Markdown(f"# {t('title')}\n**{t('subtitle')}** | {t('models')}")
@@ -980,5 +976,6 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=args.port,
         share=args.share,
-        show_error=True
+        show_error=True,
+        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")
     )
