@@ -295,7 +295,9 @@ class ConsensusStep(PipelineStep[ConsensusInput, ConsensusOutput]):
         
         return {
             "bgm_style": self._majority_value(bgm_styles),
+            "bgm_style_detail": self._detailed_distribution(bgm_styles),
             "bgm_mood": self._majority_value(moods),
+            "bgm_mood_detail": self._detailed_distribution(moods),
             "bgm_instruments": list(set(instruments_list)) if instruments_list else [],
             "tempo_bpm": self._median_value(tempos),
             "percussive_ratio": self._median_value(percussive_ratios),
@@ -336,6 +338,7 @@ class ConsensusStep(PipelineStep[ConsensusInput, ConsensusOutput]):
         }
         
         return {
+            "yolo_available": len(yolo_environments) > 0,
             "yolo_environment": self._majority_value(yolo_environments),
             "yolo_style": self._majority_value(yolo_styles),
             "yolo_object_colors": consensus_colors,

@@ -372,33 +372,58 @@ class ConsensusInput(StepInput):
 @dataclass
 class ConsensusOutput(StepOutput):
     """
-    跨视频共识输出
+    跨视频共识输出 (含详细分布)
     
     包含: 多数票决定的离散特征、中位数计算的数值特征等
+    每个分类特征都有对应的 _detail 字段包含完整分布
     """
-    # 视觉共识
+    # 视觉共识 (镜头)
     camera_angle: str = "N/A"
+    camera_angle_detail: Dict[str, Any] = field(default_factory=dict)
     focal_length_tendency: str = "N/A"
+    focal_length_detail: Dict[str, Any] = field(default_factory=dict)
     camera_motion: str = "N/A"
+    camera_motion_detail: Dict[str, Any] = field(default_factory=dict)
+    
+    # 视觉共识 (构图)
     composition_rule_of_thirds: str = "N/A"
+    composition_detail: Dict[str, Any] = field(default_factory=dict)
+    
+    # 视觉共识 (场景)
     scene_category: str = "N/A"
+    scene_category_detail: Dict[str, Any] = field(default_factory=dict)
+    
+    # 视觉共识 (色彩)
     hue_family: str = "N/A"
+    hue_detail: Dict[str, Any] = field(default_factory=dict)
     saturation: str = "N/A"
+    saturation_detail: Dict[str, Any] = field(default_factory=dict)
     brightness: str = "N/A"
+    brightness_detail: Dict[str, Any] = field(default_factory=dict)
     contrast: str = "N/A"
+    contrast_detail: Dict[str, Any] = field(default_factory=dict)
+    
+    # 视觉共识 (数值)
     cct: Optional[float] = None
     natural_light_ratio: Optional[float] = None
     artificial_light_ratio: Optional[float] = None
     cuts_per_minute: Optional[float] = None
     avg_shot_length: Optional[float] = None
+    
+    # 视觉共识 (其他)
     transition_type: str = "N/A"
+    transition_detail: Dict[str, Any] = field(default_factory=dict)
     countertop_color: str = "N/A"
+    countertop_color_detail: Dict[str, Any] = field(default_factory=dict)
     countertop_texture: str = "N/A"
+    countertop_texture_detail: Dict[str, Any] = field(default_factory=dict)
     
     # 音频共识
     beat_alignment: Optional[float] = None
     bgm_style: str = "N/A"
+    bgm_style_detail: Dict[str, Any] = field(default_factory=dict)
     bgm_mood: str = "N/A"
+    bgm_mood_detail: Dict[str, Any] = field(default_factory=dict)
     bgm_instruments: List[str] = field(default_factory=list)
     tempo_bpm: Optional[float] = None
     percussive_ratio: Optional[float] = None
@@ -406,39 +431,63 @@ class ConsensusOutput(StepOutput):
     key_signature: str = "N/A"
     
     # YOLO 共识
+    yolo_available: bool = False
     yolo_environment: str = "N/A"
     yolo_style: str = "N/A"
     yolo_object_colors: Dict[str, str] = field(default_factory=dict)
     yolo_object_materials: Dict[str, str] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典格式"""
+        """转换为字典格式 (含详细分布)"""
         return {
+            # 镜头
             "camera_angle": self.camera_angle,
+            "camera_angle_detail": self.camera_angle_detail,
             "focal_length_tendency": self.focal_length_tendency,
+            "focal_length_detail": self.focal_length_detail,
             "camera_motion": self.camera_motion,
+            "camera_motion_detail": self.camera_motion_detail,
+            # 构图
             "composition_rule_of_thirds": self.composition_rule_of_thirds,
+            "composition_detail": self.composition_detail,
+            # 场景
             "scene_category": self.scene_category,
+            "scene_category_detail": self.scene_category_detail,
+            # 色彩
             "hue_family": self.hue_family,
+            "hue_detail": self.hue_detail,
             "saturation": self.saturation,
+            "saturation_detail": self.saturation_detail,
             "brightness": self.brightness,
+            "brightness_detail": self.brightness_detail,
             "contrast": self.contrast,
+            "contrast_detail": self.contrast_detail,
+            # 数值
             "cct": self.cct,
             "natural_light_ratio": self.natural_light_ratio,
             "artificial_light_ratio": self.artificial_light_ratio,
             "cuts_per_minute": self.cuts_per_minute,
             "avg_shot_length": self.avg_shot_length,
+            # 其他视觉
             "transition_type": self.transition_type,
+            "transition_detail": self.transition_detail,
             "countertop_color": self.countertop_color,
+            "countertop_color_detail": self.countertop_color_detail,
             "countertop_texture": self.countertop_texture,
+            "countertop_texture_detail": self.countertop_texture_detail,
+            # 音频
             "beat_alignment": self.beat_alignment,
             "bgm_style": self.bgm_style,
+            "bgm_style_detail": self.bgm_style_detail,
             "bgm_mood": self.bgm_mood,
+            "bgm_mood_detail": self.bgm_mood_detail,
             "bgm_instruments": self.bgm_instruments,
             "tempo_bpm": self.tempo_bpm,
             "percussive_ratio": self.percussive_ratio,
             "speech_ratio": self.speech_ratio,
             "key_signature": self.key_signature,
+            # YOLO
+            "yolo_available": self.yolo_available,
             "yolo_environment": self.yolo_environment,
             "yolo_style": self.yolo_style,
             "yolo_object_colors": self.yolo_object_colors,
