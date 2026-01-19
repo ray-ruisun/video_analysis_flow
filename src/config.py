@@ -128,36 +128,42 @@ class YOLOConfig:
 
 @dataclass
 class AIDetectionConfig:
-    """AI-generated video detection hyperparameters"""
+    """AI-generated video detection hyperparameters (SOTA 2025/2026)"""
     # Enable/disable detection
     enabled: bool = True
     
-    # Video-level deepfake detection
-    video_model: str = "Deressa/GenConViT"  # Options: Deressa/GenConViT, CVit
-    video_fake_threshold: float = 0.5  # Threshold for fake classification
-    video_frames_to_analyze: int = 16  # Frames for video model
+    # GenConViT (Face Deepfake Detection)
+    # Model: Deressa/GenConViT - ~95.8% accuracy on face deepfakes
+    use_genconvit: bool = True
+    genconvit_model: str = "Deressa/GenConViT"
     
-    # Frame-level fake detection
-    frame_detection_enabled: bool = True
-    frame_model: str = "prithivMLmods/deepfake-detector-model-v1"
-    frame_fake_threshold: float = 0.5
-    frame_sample_count: int = 10  # Number of frames to sample
+    # CLIP Zero-Shot (Synthetic Detection)
+    # Model: openai/clip-vit-large-patch14 - zero-shot synthetic detection
+    use_clip: bool = True
+    clip_model: str = "openai/clip-vit-large-patch14"
     
-    # Face detection
-    face_detection_enabled: bool = True
-    face_detector: str = "opencv"  # Options: opencv, mtcnn, retinaface
-    min_face_size: int = 30  # Minimum face size in pixels
-    face_confidence_threshold: float = 0.5
+    # Temporal Analysis (Motion Inconsistency)
+    # Detects flickering and unnatural motion in AI-generated videos
+    use_temporal: bool = True
+    temporal_frames: int = 30
+    
+    # Face Detection (No-Face Video Analysis)
+    use_face_detection: bool = True
+    face_detector: str = "opencv"  # Options: opencv
+    min_face_size: int = 30
     no_face_threshold: float = 0.9  # If >90% frames have no face
     
-    # Synthetic video detection
-    synthetic_detection_enabled: bool = True
-    synthetic_threshold: float = 0.7  # Combined score threshold
+    # Frame sampling
+    num_frames: int = 16
     
-    # Ensemble weights
-    video_model_weight: float = 0.5
-    frame_model_weight: float = 0.3
-    face_model_weight: float = 0.2
+    # Thresholds
+    fake_threshold: float = 0.5
+    
+    # Ensemble weights (must sum to 1.0)
+    genconvit_weight: float = 0.4  # Face deepfake specialist
+    clip_weight: float = 0.3       # Zero-shot synthetic detection
+    temporal_weight: float = 0.2   # Motion analysis
+    face_weight: float = 0.1       # No-face analysis
 
 
 @dataclass 

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI Detection Step - Deepfake & Synthetic Video Detection
+AI Detection Step - Multi-Model Ensemble (SOTA 2025/2026)
 
-Uses ensemble of:
-- GenConViT (video-level deepfake)
-- Frame-level fake detector
-- Face detection analysis
+Models:
+- GenConViT: Face deepfake detection (~95.8% accuracy)
+- CLIP: Zero-shot synthetic detection
+- Temporal Analysis: Motion inconsistency
+- Face Detection: No-face video analysis
 """
 
 from dataclasses import dataclass, field
@@ -22,26 +23,25 @@ class AIDetectionInput(StepInput):
     """AI detection input configuration"""
     video_path: Path = None
     
-    # Video model config
-    video_model: str = "Deressa/GenConViT"
-    video_fake_threshold: float = 0.5
-    video_frames: int = 16
+    # Model selection
+    use_genconvit: bool = True
+    use_clip: bool = True
+    use_temporal: bool = True
+    use_face_detection: bool = True
     
-    # Frame model config
-    frame_detection_enabled: bool = True
-    frame_model: str = "prithivMLmods/deepfake-detector-model-v1"
-    frame_fake_threshold: float = 0.5
-    frame_sample_count: int = 10
+    # Frame sampling
+    num_frames: int = 16
+    temporal_frames: int = 30
     
-    # Face detection config
-    face_detection_enabled: bool = True
-    min_face_size: int = 30
+    # Thresholds
+    fake_threshold: float = 0.5
     no_face_threshold: float = 0.9
     
     # Ensemble weights
-    video_weight: float = 0.5
-    frame_weight: float = 0.3
-    face_weight: float = 0.2
+    genconvit_weight: float = 0.4
+    clip_weight: float = 0.3
+    temporal_weight: float = 0.2
+    face_weight: float = 0.1
 
 
 @dataclass
@@ -52,22 +52,27 @@ class AIDetectionOutput(StepOutput):
     confidence: float = 0.0
     verdict: str = "Unknown"  # Real, Deepfake, Synthetic, Suspicious, Unknown
     
-    # Video-level detection
-    video_fake_score: float = 0.0
-    video_model_used: str = ""
+    # Individual model scores
+    genconvit_score: float = 0.0
+    genconvit_available: bool = False
     
-    # Frame-level detection
-    frame_fake_scores: List[float] = field(default_factory=list)
-    frame_avg_fake_score: float = 0.0
-    frame_model_used: str = ""
+    clip_synthetic_score: float = 0.0
+    clip_available: bool = False
     
-    # Face detection
+    temporal_score: float = 0.0
+    temporal_anomalies: int = 0
+    
+    # Face analysis
     faces_detected: int = 0
     frames_with_faces: int = 0
     frames_analyzed: int = 0
     no_face_ratio: float = 0.0
     
-    # Analysis details
+    # Frame-level details
+    frame_scores: List[float] = field(default_factory=list)
+    
+    # Analysis metadata
+    models_used: List[str] = field(default_factory=list)
     analysis_details: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -76,25 +81,30 @@ class AIDetectionOutput(StepOutput):
             "is_ai_generated": self.is_ai_generated,
             "confidence": self.confidence,
             "verdict": self.verdict,
-            "video_fake_score": self.video_fake_score,
-            "video_model_used": self.video_model_used,
-            "frame_fake_scores": self.frame_fake_scores,
-            "frame_avg_fake_score": self.frame_avg_fake_score,
-            "frame_model_used": self.frame_model_used,
+            "genconvit_score": self.genconvit_score,
+            "genconvit_available": self.genconvit_available,
+            "clip_synthetic_score": self.clip_synthetic_score,
+            "clip_available": self.clip_available,
+            "temporal_score": self.temporal_score,
+            "temporal_anomalies": self.temporal_anomalies,
             "faces_detected": self.faces_detected,
             "frames_with_faces": self.frames_with_faces,
             "frames_analyzed": self.frames_analyzed,
             "no_face_ratio": self.no_face_ratio,
+            "models_used": self.models_used,
             "analysis_details": self.analysis_details,
         }
 
 
 class AIDetectionStep(BaseStep):
     """
-    AI-Generated Video Detection Step
+    AI-Generated Video Detection Step (SOTA 2025/2026)
     
-    Detects deepfakes, synthetic videos, and no-face AI videos
-    using an ensemble of models.
+    Multi-model ensemble:
+    1. GenConViT - Face deepfake detection (~95.8% accuracy)
+    2. CLIP - Zero-shot synthetic detection
+    3. Temporal Analysis - Motion inconsistency detection
+    4. Face Detection - No-face video analysis
     """
     
     step_name = "AI Detection"
@@ -109,18 +119,17 @@ class AIDetectionStep(BaseStep):
             
             result = detect_ai_generated_video(
                 video_path=input_data.video_path,
-                video_model=input_data.video_model,
-                video_fake_threshold=input_data.video_fake_threshold,
-                video_frames=input_data.video_frames,
-                frame_detection_enabled=input_data.frame_detection_enabled,
-                frame_model=input_data.frame_model,
-                frame_fake_threshold=input_data.frame_fake_threshold,
-                frame_sample_count=input_data.frame_sample_count,
-                face_detection_enabled=input_data.face_detection_enabled,
-                min_face_size=input_data.min_face_size,
+                use_genconvit=input_data.use_genconvit,
+                use_clip=input_data.use_clip,
+                use_temporal=input_data.use_temporal,
+                use_face_detection=input_data.use_face_detection,
+                num_frames=input_data.num_frames,
+                temporal_frames=input_data.temporal_frames,
+                fake_threshold=input_data.fake_threshold,
                 no_face_threshold=input_data.no_face_threshold,
-                video_weight=input_data.video_weight,
-                frame_weight=input_data.frame_weight,
+                genconvit_weight=input_data.genconvit_weight,
+                clip_weight=input_data.clip_weight,
+                temporal_weight=input_data.temporal_weight,
                 face_weight=input_data.face_weight,
             )
             
@@ -129,15 +138,18 @@ class AIDetectionStep(BaseStep):
                 is_ai_generated=result.is_ai_generated,
                 confidence=result.confidence,
                 verdict=result.verdict,
-                video_fake_score=result.video_fake_score,
-                video_model_used=result.video_model_used,
-                frame_fake_scores=result.frame_fake_scores,
-                frame_avg_fake_score=result.frame_avg_fake_score,
-                frame_model_used=result.frame_model_used,
+                genconvit_score=result.genconvit_score,
+                genconvit_available=result.genconvit_available,
+                clip_synthetic_score=result.clip_synthetic_score,
+                clip_available=result.clip_available,
+                temporal_score=result.temporal_score,
+                temporal_anomalies=result.temporal_anomalies,
                 faces_detected=result.faces_detected,
                 frames_with_faces=result.frames_with_faces,
                 frames_analyzed=result.frames_analyzed,
                 no_face_ratio=result.no_face_ratio,
+                frame_scores=result.frame_scores,
+                models_used=result.models_used,
                 analysis_details=result.analysis_details,
             )
             
@@ -169,10 +181,14 @@ class AIDetectionStep(BaseStep):
         }
         emoji = verdict_emoji.get(output.verdict, "❓")
         
+        models_str = ", ".join(output.models_used) if output.models_used else "None"
+        
         logger.info(
-            f"  → {emoji} Verdict: {output.verdict} | "
-            f"Confidence: {output.confidence:.1%} | "
-            f"Video: {output.video_fake_score:.1%} | "
-            f"Frame: {output.frame_avg_fake_score:.1%} | "
+            f"  → {emoji} {output.verdict} | "
+            f"Conf: {output.confidence:.1%} | "
+            f"GenConViT: {output.genconvit_score:.1%} | "
+            f"CLIP: {output.clip_synthetic_score:.1%} | "
+            f"Temporal: {output.temporal_score:.1%} | "
             f"NoFace: {output.no_face_ratio:.1%}"
         )
+        logger.info(f"  → Models: {models_str}")

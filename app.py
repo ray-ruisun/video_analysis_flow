@@ -433,25 +433,27 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
     }
     emoji = verdict_emoji.get(output.verdict, "❓")
     
-    color = "green" if output.verdict == "Real" else ("red" if output.is_ai_generated else "orange")
+    models_str = ", ".join(output.models_used) if output.models_used else "None"
     
     return f"""## 🤖 {t('ai_results')}
 
 ### {emoji} {t('verdict')}: **{output.verdict}**
 ### {t('confidence')}: **{output.confidence:.1%}**
 
-| Metric | Score |
-|:---|:---:|
-| Video Model Score | **{output.video_fake_score:.1%}** |
-| Frame Avg Score | **{output.frame_avg_fake_score:.1%}** |
-| No-Face Ratio | **{output.no_face_ratio:.1%}** |
+| Model | Score | Status |
+|:---|:---:|:---:|
+| GenConViT (Deepfake) | **{output.genconvit_score:.1%}** | {'✅' if output.genconvit_available else '❌'} |
+| CLIP (Synthetic) | **{output.clip_synthetic_score:.1%}** | {'✅' if output.clip_available else '❌'} |
+| Temporal (Motion) | **{output.temporal_score:.1%}** | ✅ |
 
-| Detection | Value |
+| Face Analysis | Value |
 |:---|:---:|
 | Faces Detected | **{output.faces_detected}** |
 | Frames with Faces | **{output.frames_with_faces}/{output.frames_analyzed}** |
-| Video Model | {output.video_model_used} |
-| Frame Model | {output.frame_model_used} |
+| No-Face Ratio | **{output.no_face_ratio:.1%}** |
+| Temporal Anomalies | **{output.temporal_anomalies}** |
+
+**Models Used**: {models_str}
 """
 
 
@@ -572,23 +574,22 @@ def run_ai_detection(progress=gr.Progress()):
     if not cfg.enabled:
         return "❌ AI Detection is disabled in configuration"
     
-    progress(0.1, desc=f"{t('loading')} GenConViT...")
+    progress(0.1, desc=f"{t('loading')} GenConViT + CLIP...")
     step = AIDetectionStep()
     input_data = AIDetectionInput(
         video_path=STATE.video_path,
-        video_model=cfg.video_model,
-        video_fake_threshold=cfg.video_fake_threshold,
-        video_frames=cfg.video_frames_to_analyze,
-        frame_detection_enabled=cfg.frame_detection_enabled,
-        frame_model=cfg.frame_model,
-        frame_fake_threshold=cfg.frame_fake_threshold,
-        frame_sample_count=cfg.frame_sample_count,
-        face_detection_enabled=cfg.face_detection_enabled,
-        min_face_size=cfg.min_face_size,
+        use_genconvit=cfg.use_genconvit,
+        use_clip=cfg.use_clip,
+        use_temporal=cfg.use_temporal,
+        use_face_detection=cfg.use_face_detection,
+        num_frames=cfg.num_frames,
+        temporal_frames=cfg.temporal_frames,
+        fake_threshold=cfg.fake_threshold,
         no_face_threshold=cfg.no_face_threshold,
-        video_weight=cfg.video_model_weight,
-        frame_weight=cfg.frame_model_weight,
-        face_weight=cfg.face_model_weight,
+        genconvit_weight=cfg.genconvit_weight,
+        clip_weight=cfg.clip_weight,
+        temporal_weight=cfg.temporal_weight,
+        face_weight=cfg.face_weight,
     )
     
     progress(0.4, desc=f"{t('analyzing')}...")
@@ -729,10 +730,8 @@ def update_config(
     visual_frames, visual_threshold,
     yolo_model, yolo_conf, yolo_frames,
     asr_model, asr_beam,
-    ai_enabled, ai_video_model, ai_video_threshold,
-    ai_frame_enabled, ai_frame_threshold,
-    ai_face_enabled,
-    ai_video_weight, ai_frame_weight, ai_face_weight
+    ai_enabled, ai_genconvit, ai_clip, ai_temporal, ai_face,
+    ai_threshold, ai_genconvit_weight, ai_clip_weight, ai_temporal_weight, ai_face_weight
 ):
     """Update configuration from UI controls"""
     # Visual
@@ -748,16 +747,17 @@ def update_config(
     STATE.config.asr.whisper_model = asr_model
     STATE.config.asr.whisper_beam_size = int(asr_beam)
     
-    # AI Detection
+    # AI Detection (SOTA 2025/2026)
     STATE.config.ai_detection.enabled = ai_enabled
-    STATE.config.ai_detection.video_model = ai_video_model
-    STATE.config.ai_detection.video_fake_threshold = float(ai_video_threshold)
-    STATE.config.ai_detection.frame_detection_enabled = ai_frame_enabled
-    STATE.config.ai_detection.frame_fake_threshold = float(ai_frame_threshold)
-    STATE.config.ai_detection.face_detection_enabled = ai_face_enabled
-    STATE.config.ai_detection.video_model_weight = float(ai_video_weight)
-    STATE.config.ai_detection.frame_model_weight = float(ai_frame_weight)
-    STATE.config.ai_detection.face_model_weight = float(ai_face_weight)
+    STATE.config.ai_detection.use_genconvit = ai_genconvit
+    STATE.config.ai_detection.use_clip = ai_clip
+    STATE.config.ai_detection.use_temporal = ai_temporal
+    STATE.config.ai_detection.use_face_detection = ai_face
+    STATE.config.ai_detection.fake_threshold = float(ai_threshold)
+    STATE.config.ai_detection.genconvit_weight = float(ai_genconvit_weight)
+    STATE.config.ai_detection.clip_weight = float(ai_clip_weight)
+    STATE.config.ai_detection.temporal_weight = float(ai_temporal_weight)
+    STATE.config.ai_detection.face_weight = float(ai_face_weight)
     
     return "✅ Configuration updated"
 
@@ -898,23 +898,22 @@ def create_ui():
                         cfg_asr_beam = gr.Slider(1, 10, value=cfg.asr.whisper_beam_size, step=1, label=t('asr_beam_size'))
                     
                     with gr.Column():
-                        gr.Markdown("### 🤖 AI Detection")
+                        gr.Markdown("### 🤖 AI Detection (SOTA 2025/2026)")
                         cfg_ai_enabled = gr.Checkbox(value=cfg.ai_detection.enabled, label=t('ai_enabled'))
-                        cfg_ai_video_model = gr.Dropdown(
-                            choices=["Deressa/GenConViT", "none"],
-                            value=cfg.ai_detection.video_model, label=t('ai_video_model')
-                        )
-                        cfg_ai_video_threshold = gr.Slider(0.1, 0.9, value=cfg.ai_detection.video_fake_threshold, step=0.05, label=t('ai_video_threshold'))
                         
-                        cfg_ai_frame_enabled = gr.Checkbox(value=cfg.ai_detection.frame_detection_enabled, label=t('ai_frame_enabled'))
-                        cfg_ai_frame_threshold = gr.Slider(0.1, 0.9, value=cfg.ai_detection.frame_fake_threshold, step=0.05, label=t('ai_frame_threshold'))
+                        gr.Markdown("**Models**")
+                        cfg_ai_genconvit = gr.Checkbox(value=cfg.ai_detection.use_genconvit, label="GenConViT (Deepfake)")
+                        cfg_ai_clip = gr.Checkbox(value=cfg.ai_detection.use_clip, label="CLIP (Synthetic)")
+                        cfg_ai_temporal = gr.Checkbox(value=cfg.ai_detection.use_temporal, label="Temporal (Motion)")
+                        cfg_ai_face = gr.Checkbox(value=cfg.ai_detection.use_face_detection, label="Face Detection")
                         
-                        cfg_ai_face_enabled = gr.Checkbox(value=cfg.ai_detection.face_detection_enabled, label=t('ai_face_enabled'))
+                        cfg_ai_threshold = gr.Slider(0.1, 0.9, value=cfg.ai_detection.fake_threshold, step=0.05, label="Fake Threshold")
                         
                         gr.Markdown("### ⚖️ Ensemble Weights")
-                        cfg_ai_video_weight = gr.Slider(0, 1, value=cfg.ai_detection.video_model_weight, step=0.1, label=t('ai_video_weight'))
-                        cfg_ai_frame_weight = gr.Slider(0, 1, value=cfg.ai_detection.frame_model_weight, step=0.1, label=t('ai_frame_weight'))
-                        cfg_ai_face_weight = gr.Slider(0, 1, value=cfg.ai_detection.face_model_weight, step=0.1, label=t('ai_face_weight'))
+                        cfg_ai_genconvit_weight = gr.Slider(0, 1, value=cfg.ai_detection.genconvit_weight, step=0.1, label="GenConViT Weight")
+                        cfg_ai_clip_weight = gr.Slider(0, 1, value=cfg.ai_detection.clip_weight, step=0.1, label="CLIP Weight")
+                        cfg_ai_temporal_weight = gr.Slider(0, 1, value=cfg.ai_detection.temporal_weight, step=0.1, label="Temporal Weight")
+                        cfg_ai_face_weight = gr.Slider(0, 1, value=cfg.ai_detection.face_weight, step=0.1, label="Face Weight")
                 
                 config_status = gr.Textbox(label="Status", interactive=False)
                 save_config_btn = gr.Button("💾 Save Configuration", variant="primary")
@@ -925,10 +924,8 @@ def create_ui():
                         cfg_visual_frames, cfg_visual_threshold,
                         cfg_yolo_model, cfg_yolo_conf, cfg_yolo_frames,
                         cfg_asr_model, cfg_asr_beam,
-                        cfg_ai_enabled, cfg_ai_video_model, cfg_ai_video_threshold,
-                        cfg_ai_frame_enabled, cfg_ai_frame_threshold,
-                        cfg_ai_face_enabled,
-                        cfg_ai_video_weight, cfg_ai_frame_weight, cfg_ai_face_weight
+                        cfg_ai_enabled, cfg_ai_genconvit, cfg_ai_clip, cfg_ai_temporal, cfg_ai_face,
+                        cfg_ai_threshold, cfg_ai_genconvit_weight, cfg_ai_clip_weight, cfg_ai_temporal_weight, cfg_ai_face_weight
                     ],
                     outputs=[config_status]
                 )
