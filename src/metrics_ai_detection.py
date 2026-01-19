@@ -94,17 +94,36 @@ def _get_device():
 # Model Loaders
 # =============================================================================
 def _load_genconvit():
-    """Load GenConViT deepfake detector"""
+    """Load GenConViT deepfake detector
+    
+    Note: GenConViT on HuggingFace doesn't have a preprocessor_config.json,
+    so we use a generic ViT processor as fallback.
+    """
     if "genconvit" not in _MODELS:
         try:
-            from transformers import AutoImageProcessor, AutoModelForImageClassification
+            from transformers import AutoImageProcessor, AutoModelForImageClassification, ViTImageProcessor
             import torch
             
             model_name = "Deressa/GenConViT"
             logger.info(f"Loading GenConViT: {model_name}")
             
-            processor = AutoImageProcessor.from_pretrained(model_name)
+            # Try to load model first
             model = AutoModelForImageClassification.from_pretrained(model_name)
+            
+            # GenConViT doesn't have a preprocessor_config.json
+            # Use a generic ViT processor with standard settings
+            try:
+                processor = AutoImageProcessor.from_pretrained(model_name)
+            except Exception:
+                logger.info("Using generic ViT processor for GenConViT")
+                # Use standard ViT processor settings (224x224, normalize)
+                processor = ViTImageProcessor(
+                    size={"height": 224, "width": 224},
+                    image_mean=[0.485, 0.456, 0.406],
+                    image_std=[0.229, 0.224, 0.225],
+                    do_resize=True,
+                    do_normalize=True
+                )
             
             device = _get_device()
             model = model.to(device)

@@ -143,8 +143,9 @@ class AIDetectionConfig:
     clip_model: str = "openai/clip-vit-large-patch14"
     
     # Temporal Analysis (Motion Inconsistency)
-    # Detects flickering and unnatural motion in AI-generated videos
-    use_temporal: bool = True
+    # WARNING: Not very accurate, disabled by default
+    # May produce false positives on videos with fast motion
+    use_temporal: bool = False  # Disabled by default - not reliable
     temporal_frames: int = 30
     
     # Face Detection (No-Face Video Analysis)
@@ -159,10 +160,10 @@ class AIDetectionConfig:
     # Thresholds
     fake_threshold: float = 0.5
     
-    # Ensemble weights (must sum to 1.0)
-    genconvit_weight: float = 0.4  # Face deepfake specialist
-    clip_weight: float = 0.3       # Zero-shot synthetic detection
-    temporal_weight: float = 0.2   # Motion analysis
+    # Ensemble weights (adjusted - temporal disabled)
+    genconvit_weight: float = 0.5  # Face deepfake specialist (primary)
+    clip_weight: float = 0.4       # Zero-shot synthetic detection
+    temporal_weight: float = 0.0   # Disabled - not reliable
     face_weight: float = 0.1       # No-face analysis
 
 

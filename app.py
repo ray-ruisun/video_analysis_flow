@@ -898,9 +898,9 @@ def create_ui():
                         cfg_ai_enabled = gr.Checkbox(value=cfg.ai_detection.enabled, label=t('ai_enabled'))
                         
                         gr.Markdown("**Models**")
-                        cfg_ai_genconvit = gr.Checkbox(value=cfg.ai_detection.use_genconvit, label="GenConViT (Deepfake)")
-                        cfg_ai_clip = gr.Checkbox(value=cfg.ai_detection.use_clip, label="CLIP (Synthetic)")
-                        cfg_ai_temporal = gr.Checkbox(value=cfg.ai_detection.use_temporal, label="Temporal (Motion)")
+                        cfg_ai_genconvit = gr.Checkbox(value=cfg.ai_detection.use_genconvit, label="GenConViT (Deepfake) ⭐")
+                        cfg_ai_clip = gr.Checkbox(value=cfg.ai_detection.use_clip, label="CLIP (Synthetic) ⭐")
+                        cfg_ai_temporal = gr.Checkbox(value=cfg.ai_detection.use_temporal, label="Temporal (Motion) ⚠️ 不准确")
                         cfg_ai_face = gr.Checkbox(value=cfg.ai_detection.use_face_detection, label="Face Detection")
                         
                         cfg_ai_threshold = gr.Slider(0.1, 0.9, value=cfg.ai_detection.fake_threshold, step=0.05, label="Fake Threshold")
