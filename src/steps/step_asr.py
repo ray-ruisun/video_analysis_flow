@@ -107,6 +107,7 @@ class ASRAnalysisStep(PipelineStep[ASRInput, ASROutput]):
                 str(input_data.audio_path),
                 language=input_data.language,
                 model_size=input_data.model_size,
+                beam_size=input_data.beam_size,
                 enable_prosody=input_data.enable_prosody,
                 enable_emotion=input_data.enable_emotion
             )

@@ -146,7 +146,8 @@ def _load_emotion_classifier():
 def transcribe_audio(
     audio_path: str,
     language: str = "en",
-    model_size: str = DEFAULT_WHISPER_MODEL
+    model_size: str = DEFAULT_WHISPER_MODEL,
+    beam_size: int = 5
 ) -> Dict[str, Any]:
     """
     Transcribe audio using Whisper.
@@ -155,6 +156,7 @@ def transcribe_audio(
         audio_path: Path to audio file
         language: Language code (default: "en", use "auto" for auto-detect)
         model_size: Model size ("tiny", "base", "small", "medium", "large-v3", "large-v3-turbo")
+        beam_size: Beam search width for decoding (default: 5)
         
     Returns:
         dict: Transcription results with text, timing, and metadata
@@ -181,10 +183,10 @@ def transcribe_audio(
             
             # 自动语言检测
             if language == "auto":
-                segments, info = model.transcribe(audio_path, vad_filter=True)
+                segments, info = model.transcribe(audio_path, vad_filter=True, beam_size=beam_size)
                 detected_language = info.language
             else:
-                segments, info = model.transcribe(audio_path, language=language, vad_filter=True)
+                segments, info = model.transcribe(audio_path, language=language, vad_filter=True, beam_size=beam_size)
                 detected_language = language
             
             for segment in segments:
@@ -202,9 +204,9 @@ def transcribe_audio(
             model = whisper.load_model(model_size)
             
             if language == "auto":
-                result = model.transcribe(audio_path)
+                result = model.transcribe(audio_path, beam_size=beam_size)
             else:
-                result = model.transcribe(audio_path, language=language)
+                result = model.transcribe(audio_path, language=language, beam_size=beam_size)
             
             transcribed_text = result.get("text", "")
             detected_language = result.get("language", language)
@@ -561,6 +563,7 @@ def extract_full_asr_metrics(
     audio_path: str,
     language: str = "en",
     model_size: str = DEFAULT_WHISPER_MODEL,
+    beam_size: int = 5,
     enable_prosody: bool = True,
     enable_emotion: bool = True
 ) -> Dict[str, Any]:
@@ -578,7 +581,7 @@ def extract_full_asr_metrics(
         dict: Complete ASR analysis
     """
     # Transcribe
-    transcription = transcribe_audio(audio_path, language, model_size)
+    transcription = transcribe_audio(audio_path, language, model_size, beam_size)
     
     # Analyze speech rate
     speech_rate = analyze_speech_rate(transcription, audio_path)
