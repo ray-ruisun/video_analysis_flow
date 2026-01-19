@@ -1541,19 +1541,11 @@ def create_ui():
                         gr.Markdown("### 📤 Video Upload")
                         gr.Markdown("*Supports MP4, AVI, MOV, MKV. Upload single or multiple videos.*")
                         
-                        with gr.Row():
-                            video_input = gr.Video(
-                                label="📤 Upload Video",
-                                height=240,
-                                elem_classes=["video-preview"],
-                                scale=3
-                            )
-                            with gr.Column(scale=1, min_width=120):
-                                add_video_input = gr.File(
-                                    label=t('add_video'),
-                                    file_types=["video"],
-                                    type="filepath"
-                                )
+                        video_input = gr.Video(
+                            label="📤 Upload Video",
+                            height=280,
+                            elem_classes=["video-preview"]
+                        )
                         
                         upload_status = gr.Textbox(
                             label="Upload Status",
@@ -1573,6 +1565,12 @@ def create_ui():
                         )
                         
                         with gr.Row():
+                            add_video_btn = gr.UploadButton(
+                                t('add_video'), 
+                                file_types=["video"],
+                                size="sm",
+                                scale=2
+                            )
                             delete_video_btn = gr.Button("🗑️ " + t('delete_video'), size="sm", variant="secondary", scale=1)
                             clear_videos_btn = gr.Button(t('clear_all'), size="sm", variant="stop", scale=1)
                         
@@ -1855,8 +1853,8 @@ def create_ui():
         video_input.change(fn=upload_video, inputs=[video_input],
                           outputs=[upload_status, audio_player, frame_gallery, video_list_header, video_list_radio])
         
-        add_video_input.change(fn=add_more_video, inputs=[add_video_input],
-                              outputs=[video_list_header, video_list_radio])
+        add_video_btn.upload(fn=add_more_video, inputs=[add_video_btn],
+                            outputs=[video_list_header, video_list_radio])
         
         video_list_radio.change(fn=select_video_from_list, inputs=[video_list_radio],
                                outputs=[upload_status, audio_player, frame_gallery])
