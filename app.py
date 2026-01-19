@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Tuple, Dict, Any, List
+from dataclasses import dataclass, field
 
 import gradio as gr
 import numpy as np
@@ -49,6 +50,9 @@ TRANSLATIONS = {
         "audio_preview": "Extracted Audio",
         "keyframes": "Key Frames",
         "analyze_all": "🎯 Analyze All",
+        "analyze_current": "🎯 Analyze Current Video",
+        "analyze_batch": "📈 Analyze All Videos (Cross-Video)",
+        "batch_hint": "*Use 'Analyze Current' for single video, 'Analyze All' for multi-video comparison*",
         "btn_visual": "📹 Camera & Color",
         "btn_audio": "🎵 BGM & Tempo",
         "btn_asr": "🎤 Speech & Emotion",
@@ -65,7 +69,16 @@ TRANSLATIONS = {
         "tab_audio": "🎵 BGM & Tempo",
         "tab_asr": "🎤 Speech & Emotion",
         "tab_yolo": "🔍 Objects & Materials",
-        "tab_summary": "📊 Cross-Video Summary",
+        "tab_summary": "📊 Analysis Summary",
+        "video_list": "Video List",
+        "add_video": "➕ Add Video",
+        "clear_all": "🗑️ Clear All",
+        "single_video_mode": "Single Video Analysis",
+        "multi_video_mode": "Cross-Video Comparison ({n} videos)",
+        "no_videos": "No videos added",
+        "video_n": "Video {n}",
+        "select_video": "Select video to view",
+        "comparison_chart": "Comparison Chart",
         "tab_ai": "🤖 AI/Deepfake Detection",
         "report_status": "Report Status",
         "word_report": "Word Report",
@@ -136,6 +149,9 @@ TRANSLATIONS = {
         "audio_preview": "提取的音频",
         "keyframes": "关键帧",
         "analyze_all": "🎯 一键分析",
+        "analyze_current": "🎯 分析当前视频",
+        "analyze_batch": "📈 分析全部视频 (跨视频对比)",
+        "batch_hint": "*单视频分析使用'分析当前'，多视频对比使用'分析全部'*",
         "btn_visual": "📹 镜头色彩",
         "btn_audio": "🎵 背景音乐",
         "btn_asr": "🎤 语音情感",
@@ -153,6 +169,15 @@ TRANSLATIONS = {
         "tab_asr": "🎤 语音与情感",
         "tab_yolo": "🔍 物体与材质",
         "tab_summary": "📊 综合汇总",
+        "video_list": "视频列表",
+        "add_video": "➕ 添加视频",
+        "clear_all": "🗑️ 清空全部",
+        "single_video_mode": "单视频分析",
+        "multi_video_mode": "跨视频对比 ({n} 个视频)",
+        "no_videos": "未添加视频",
+        "video_n": "视频 {n}",
+        "select_video": "选择视频查看",
+        "comparison_chart": "对比图表",
         "tab_ai": "🤖 AI生成检测",
         "report_status": "报告状态",
         "word_report": "Word 报告",
@@ -221,12 +246,39 @@ def set_language(lang: str):
 # =============================================================================
 # Global State
 # =============================================================================
+@dataclass
+class VideoAnalysis:
+    """Single video analysis result container"""
+    video_path: Optional[Path] = None
+    audio_path: Optional[Path] = None
+    work_dir: Optional[Path] = None
+    visual_output: Optional[VisualOutput] = None
+    audio_output: Optional[AudioOutput] = None
+    asr_output: Optional[ASROutput] = None
+    yolo_output: Optional[YOLOOutput] = None
+    ai_output: Optional[AIDetectionOutput] = None
+    
+    def to_metrics(self) -> VideoMetrics:
+        """Convert to VideoMetrics for consensus calculation"""
+        metrics = VideoMetrics(path=str(self.video_path) if self.video_path else "")
+        metrics.visual = self.visual_output
+        metrics.audio = self.audio_output
+        metrics.asr = self.asr_output
+        metrics.yolo = self.yolo_output
+        return metrics
+
+
 class AnalysisState:
     def __init__(self):
         self.reset()
         self.config = get_default_config()
     
     def reset(self):
+        # Multi-video support
+        self.videos: List[VideoAnalysis] = []
+        self.current_index: int = 0  # Currently selected video
+        
+        # Legacy single-video properties (for backward compatibility)
         self.video_path: Optional[Path] = None
         self.audio_path: Optional[Path] = None
         self.work_dir: Optional[Path] = None
@@ -238,6 +290,53 @@ class AnalysisState:
         self.ai_output: Optional[AIDetectionOutput] = None
         self.report_path: Optional[str] = None
         self.pdf_path: Optional[str] = None
+    
+    def add_video(self, video_path: Path, work_dir: Path) -> int:
+        """Add a new video for analysis, returns index"""
+        analysis = VideoAnalysis(video_path=video_path, work_dir=work_dir)
+        self.videos.append(analysis)
+        return len(self.videos) - 1
+    
+    def get_current(self) -> Optional[VideoAnalysis]:
+        """Get current video analysis"""
+        if 0 <= self.current_index < len(self.videos):
+            return self.videos[self.current_index]
+        return None
+    
+    def sync_current_to_legacy(self):
+        """Sync current video to legacy single-video properties"""
+        current = self.get_current()
+        if current:
+            self.video_path = current.video_path
+            self.audio_path = current.audio_path
+            self.work_dir = current.work_dir
+            self.visual_output = current.visual_output
+            self.audio_output = current.audio_output
+            self.asr_output = current.asr_output
+            self.yolo_output = current.yolo_output
+            self.ai_output = current.ai_output
+    
+    def sync_legacy_to_current(self):
+        """Sync legacy properties back to current video"""
+        current = self.get_current()
+        if current:
+            current.visual_output = self.visual_output
+            current.audio_output = self.audio_output
+            current.asr_output = self.asr_output
+            current.yolo_output = self.yolo_output
+            current.ai_output = self.ai_output
+    
+    def get_all_metrics(self) -> List[VideoMetrics]:
+        """Get all video metrics for consensus"""
+        return [v.to_metrics() for v in self.videos if v.visual_output or v.audio_output]
+    
+    def get_video_count(self) -> int:
+        """Get number of videos"""
+        return len(self.videos)
+    
+    def get_analyzed_count(self) -> int:
+        """Get number of analyzed videos"""
+        return sum(1 for v in self.videos if v.visual_output or v.audio_output)
 
 STATE = AnalysisState()
 
@@ -551,24 +650,122 @@ def format_yolo(output: YOLOOutput) -> str:
 """
 
 
-def format_consensus(output: ConsensusOutput) -> str:
+def format_consensus(output: ConsensusOutput, video_count: int = 1) -> str:
+    """Format consensus output - adapts based on single vs multi-video mode"""
     if not output or not output.success:
         return f"❌ {t('analysis_failed')}"
     
     cct_str = f"{output.cct:.0f}K" if output.cct else "N/A"
     bpm_str = f"{output.tempo_bpm:.1f}" if output.tempo_bpm else "N/A"
+    cuts_str = f"{output.cuts_per_minute:.1f}" if output.cuts_per_minute else "N/A"
+    shot_str = f"{output.avg_shot_length:.2f}s" if output.avg_shot_length else "N/A"
     
-    return f"""## 📊 {t('summary_results')}
+    # Determine mode
+    if video_count <= 1:
+        # Single video mode - Analysis Summary
+        mode_title = t('single_video_mode')
+        mode_icon = "📊"
+        comparison_note = ""
+    else:
+        # Multi-video mode - Cross-Video Comparison  
+        mode_title = t('multi_video_mode').format(n=video_count)
+        mode_icon = "📈"
+        comparison_note = f"\n> 📊 *Aggregated from {video_count} videos using majority voting (categorical) and median (numerical)*\n"
+    
+    # Build distribution details for categorical metrics
+    def format_distribution(detail: Dict) -> str:
+        if not detail or not detail.get('distribution'):
+            return ""
+        dist = detail.get('distribution', [])
+        if len(dist) <= 1:
+            return ""
+        items = [f"`{d['value']}` ({d['percentage']:.0f}%)" for d in dist[:3]]
+        return " | ".join(items)
+    
+    # Camera distribution
+    camera_dist = format_distribution(getattr(output, 'camera_angle_detail', None))
+    camera_row = f"| **Camera Angle** | {output.camera_angle} | {camera_dist if camera_dist else '—'} |"
+    
+    # Hue distribution
+    hue_dist = format_distribution(getattr(output, 'hue_detail', None))
+    hue_row = f"| **Hue Family** | {output.hue_family} | {hue_dist if hue_dist else '—'} |"
+    
+    # Saturation distribution
+    sat_dist = format_distribution(getattr(output, 'saturation_detail', None))
+    sat_row = f"| **Saturation** | {output.saturation} | {sat_dist if sat_dist else '—'} |"
+    
+    # Brightness distribution
+    bright_dist = format_distribution(getattr(output, 'brightness_detail', None))
+    bright_row = f"| **Brightness** | {output.brightness} | {bright_dist if bright_dist else '—'} |"
+    
+    # Scene distribution
+    scene_dist = format_distribution(getattr(output, 'scene_category_detail', None))
+    scene_row = f"| **Scene** | {output.scene_category} | {scene_dist if scene_dist else '—'} |"
+    
+    # BGM Style distribution
+    bgm_dist = format_distribution(getattr(output, 'bgm_style_detail', None))
+    bgm_row = f"| **BGM Style** | {output.bgm_style} | {bgm_dist if bgm_dist else '—'} |"
+    
+    # Mood distribution
+    mood_dist = format_distribution(getattr(output, 'bgm_mood_detail', None))
+    mood_row = f"| **Mood** | {output.bgm_mood} | {mood_dist if mood_dist else '—'} |"
+    
+    # YOLO section
+    yolo_section = ""
+    if getattr(output, 'yolo_available', False):
+        yolo_env = getattr(output, 'yolo_environment', 'N/A')
+        yolo_style = getattr(output, 'yolo_style', 'N/A')
+        yolo_section = f"""
+### 🔍 Object Detection Summary
+| Metric | Value |
+|:-------|:------|
+| Environment | {yolo_env} |
+| Activity | {yolo_style} |
+"""
+    
+    # Beat alignment
+    beat_section = ""
+    if output.beat_alignment is not None:
+        beat_pct = output.beat_alignment * 100
+        beat_icon = "🎯" if beat_pct > 50 else "📍"
+        beat_section = f"""
+### 🎵 Audio-Visual Sync
+| Metric | Value | Interpretation |
+|:-------|:-----:|:---------------|
+| **Beat Alignment** | {beat_pct:.1f}% | {beat_icon} {'Good' if beat_pct > 50 else 'Moderate'} sync between cuts & beats |
+"""
+    
+    return f"""## {mode_icon} {mode_title}
+{comparison_note}
+### 🎬 Visual Characteristics
 
-| Camera | Hue | Saturation | Brightness |
-|:---:|:---:|:---:|:---:|
-| **{output.camera_angle}** | **{output.hue_family}** | **{output.saturation}** | **{output.brightness}** |
+| Metric | Dominant Value | Distribution |
+|:-------|:-------------:|:-------------|
+{camera_row}
+{hue_row}
+{sat_row}
+{bright_row}
+{scene_row}
 
-| BGM | Mood | BPM | CCT |
-|:---:|:---:|:---:|:---:|
-| **{output.bgm_style}** | **{output.bgm_mood}** | **{bpm_str}** | **{cct_str}** |
+### 📊 Technical Metrics
 
-**Scene**: {output.scene_category}
+| Metric | Value | Description |
+|:-------|:-----:|:------------|
+| **Color Temperature** | {cct_str} | Average CCT |
+| **Cuts per Minute** | {cuts_str} | Editing pace |
+| **Avg Shot Length** | {shot_str} | Shot duration |
+| **BPM** | {bpm_str} | Music tempo |
+
+### 🎵 Audio Characteristics
+
+| Metric | Dominant Value | Distribution |
+|:-------|:-------------:|:-------------|
+{bgm_row}
+{mood_row}
+| **Key Signature** | {output.key_signature or 'N/A'} | — |
+{yolo_section}{beat_section}
+---
+*Summary based on {'single video analysis' if video_count <= 1 else f'cross-video consensus from {video_count} videos'}*
 """
 
 
@@ -655,8 +852,9 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
 # Processing Functions
 # =============================================================================
 def upload_video(video_file):
+    """Upload a single video (resets state for single-video mode)"""
     if video_file is None:
-        return t('upload_first'), None, []
+        return t('upload_first'), None, [], get_video_list_html()
     
     STATE.reset()
     STATE.work_dir = Path(tempfile.mkdtemp(prefix="video_analysis_"))
@@ -667,7 +865,11 @@ def upload_video(video_file):
     import shutil
     shutil.copy(video_file, STATE.video_path)
     
-    STATE.audio_path = extract_audio_from_video(STATE.video_path, STATE.work_dir)
+    # Also add to multi-video list
+    STATE.add_video(STATE.video_path, STATE.work_dir)
+    STATE.videos[0].audio_path = extract_audio_from_video(STATE.video_path, STATE.work_dir)
+    STATE.audio_path = STATE.videos[0].audio_path
+    
     num_frames = STATE.config.ui.gallery_frames
     frame_paths = extract_frames_for_gallery(STATE.video_path, STATE.work_dir, num_frames)
     
@@ -677,7 +879,111 @@ def upload_video(video_file):
     status += t('audio_extracted') if STATE.audio_path else t('audio_failed')
     
     audio_path = str(STATE.audio_path) if STATE.audio_path else None
-    return status, audio_path, frame_paths
+    return status, audio_path, frame_paths, get_video_list_html()
+
+
+def add_video(video_file):
+    """Add an additional video for multi-video comparison"""
+    if video_file is None:
+        return get_video_list_html()
+    
+    video_path = Path(video_file)
+    
+    # Create work directory if not exists
+    if STATE.work_dir is None:
+        STATE.work_dir = Path(tempfile.mkdtemp(prefix="video_analysis_"))
+    
+    # Create unique subdirectory for this video
+    video_work_dir = STATE.work_dir / f"video_{len(STATE.videos)}"
+    video_work_dir.mkdir(exist_ok=True)
+    
+    # Copy video
+    dest_path = video_work_dir / video_path.name
+    import shutil
+    shutil.copy(video_file, dest_path)
+    
+    # Add to video list
+    idx = STATE.add_video(dest_path, video_work_dir)
+    
+    # Extract audio
+    STATE.videos[idx].audio_path = extract_audio_from_video(dest_path, video_work_dir)
+    
+    # If this is the first video, set legacy state
+    if len(STATE.videos) == 1:
+        STATE.video_path = dest_path
+        STATE.audio_path = STATE.videos[0].audio_path
+    
+    return get_video_list_html()
+
+
+def clear_all_videos():
+    """Clear all videos"""
+    STATE.reset()
+    return get_video_list_html(), t('upload_first'), None, []
+
+
+def select_video(index: int):
+    """Select a video from the list to view/analyze"""
+    if 0 <= index < len(STATE.videos):
+        STATE.current_index = index
+        STATE.sync_current_to_legacy()
+        
+        video = STATE.videos[index]
+        if video.video_path:
+            # Extract frames for gallery
+            num_frames = STATE.config.ui.gallery_frames
+            frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames)
+            audio_path = str(video.audio_path) if video.audio_path else None
+            
+            status = f"📹 {t('video_n').format(n=index+1)}: {video.video_path.name}"
+            return status, audio_path, frame_paths
+    
+    return t('no_videos'), None, []
+
+
+def get_video_list_html() -> str:
+    """Generate HTML for video list display"""
+    if not STATE.videos:
+        return f"<div style='padding:20px;text-align:center;color:#888;'>{t('no_videos')}</div>"
+    
+    items = []
+    for i, video in enumerate(STATE.videos):
+        name = video.video_path.name if video.video_path else f"Video {i+1}"
+        is_current = i == STATE.current_index
+        
+        # Status indicators
+        status_icons = []
+        if video.visual_output:
+            status_icons.append("📹")
+        if video.audio_output:
+            status_icons.append("🎵")
+        if video.asr_output:
+            status_icons.append("🎤")
+        if video.yolo_output:
+            status_icons.append("🔍")
+        if video.ai_output:
+            status_icons.append("🤖")
+        
+        status_str = " ".join(status_icons) if status_icons else "⏳"
+        
+        bg_color = "#e3f2fd" if is_current else "#f5f5f5"
+        border = "2px solid #2196f3" if is_current else "1px solid #ddd"
+        
+        items.append(f"""
+        <div style='padding:10px;margin:5px 0;background:{bg_color};border:{border};border-radius:8px;'>
+            <strong>{t('video_n').format(n=i+1)}</strong>: {name}<br/>
+            <small style='color:#666;'>Status: {status_str}</small>
+        </div>
+        """)
+    
+    header = f"<div style='font-weight:bold;margin-bottom:10px;'>"
+    if len(STATE.videos) == 1:
+        header += f"📊 {t('single_video_mode')}"
+    else:
+        header += f"📈 {t('multi_video_mode').format(n=len(STATE.videos))}"
+    header += "</div>"
+    
+    return header + "".join(items)
 
 
 # Internal analysis functions (no progress tracking)
@@ -789,6 +1095,7 @@ def run_visual(progress=gr.Progress()):
     progress(0.1, desc="📹 Loading CLIP...")
     progress(0.3, desc="📹 Analyzing visual...")
     result = _run_visual_internal()
+    STATE.sync_legacy_to_current()  # Sync to multi-video state
     progress(1.0, desc="✅ Visual done")
     return result
 
@@ -797,6 +1104,7 @@ def run_audio(progress=gr.Progress()):
     progress(0.1, desc="🎵 Loading CLAP...")
     progress(0.3, desc="🎵 Analyzing audio...")
     result = _run_audio_internal()
+    STATE.sync_legacy_to_current()  # Sync to multi-video state
     progress(1.0, desc="✅ Audio done")
     return result
 
@@ -805,6 +1113,7 @@ def run_asr(language: str, progress=gr.Progress()):
     progress(0.1, desc="🎤 Loading Whisper...")
     progress(0.3, desc="🎤 Transcribing...")
     result = _run_asr_internal(language)
+    STATE.sync_legacy_to_current()  # Sync to multi-video state
     progress(1.0, desc="✅ ASR done")
     return result
 
@@ -813,6 +1122,7 @@ def run_yolo(progress=gr.Progress()):
     progress(0.1, desc="🔍 Loading YOLO...")
     progress(0.3, desc="🔍 Detecting objects...")
     result = _run_yolo_internal()
+    STATE.sync_legacy_to_current()  # Sync to multi-video state
     progress(1.0, desc="✅ YOLO done")
     return result
 
@@ -821,25 +1131,97 @@ def run_ai_detection(progress=gr.Progress()):
     progress(0.1, desc="🤖 Loading AI models...")
     progress(0.3, desc="🤖 Detecting AI content...")
     result = _run_ai_detection_internal()
+    STATE.sync_legacy_to_current()  # Sync to multi-video state
     progress(1.0, desc="✅ AI detection done")
     return result
 
 
-def run_consensus():
-    if STATE.visual_output is None and STATE.audio_output is None:
-        return f"❌ {t('run_analysis_first')}"
+def run_batch_analysis(language: str, progress=gr.Progress()):
+    """Analyze all videos in the list for cross-video comparison"""
+    if not STATE.videos:
+        return (f"❌ {t('no_videos')}", None, "", "", "", "", "", "", get_video_list_html())
     
-    metrics = VideoMetrics(path=str(STATE.video_path) if STATE.video_path else "")
-    metrics.visual = STATE.visual_output
-    metrics.audio = STATE.audio_output
-    metrics.asr = STATE.asr_output
-    metrics.yolo = STATE.yolo_output
+    total_videos = len(STATE.videos)
+    results = []
+    
+    for i, video in enumerate(STATE.videos):
+        # Switch to this video
+        STATE.current_index = i
+        STATE.sync_current_to_legacy()
+        
+        # Progress for this video
+        base_progress = i / total_videos
+        progress(base_progress + 0.02, desc=f"📹 Video {i+1}/{total_videos}: Visual...")
+        
+        _run_visual_internal()
+        progress(base_progress + 0.04, desc=f"🎵 Video {i+1}/{total_videos}: Audio...")
+        
+        _run_audio_internal()
+        progress(base_progress + 0.06, desc=f"🎤 Video {i+1}/{total_videos}: ASR...")
+        
+        _run_asr_internal(language)
+        progress(base_progress + 0.08, desc=f"🔍 Video {i+1}/{total_videos}: YOLO...")
+        
+        _run_yolo_internal()
+        
+        # Sync back to video list
+        STATE.sync_legacy_to_current()
+        results.append(video.video_path.name if video.video_path else f"Video {i+1}")
+    
+    # Generate cross-video consensus
+    progress(0.95, desc="📊 Generating cross-video summary...")
+    consensus_result = run_consensus()
+    
+    progress(1.0, desc=t('done'))
+    
+    # Summary
+    summary = f"✅ Analyzed {total_videos} videos:\n"
+    for r in results:
+        summary += f"  • {r}\n"
+    summary += f"\n📊 Cross-video consensus generated"
+    
+    # Return the last video's results for display
+    STATE.current_index = total_videos - 1
+    STATE.sync_current_to_legacy()
+    
+    visual_result = format_visual(STATE.visual_output) if STATE.visual_output else ""
+    audio_result = format_audio(STATE.audio_output) if STATE.audio_output else ""
+    asr_result = format_asr(STATE.asr_output) if STATE.asr_output else ""
+    yolo_result = format_yolo(STATE.yolo_output) if STATE.yolo_output else ""
+    ai_result = format_ai_detection(STATE.ai_output) if STATE.ai_output else "*Not run*"
+    contact = STATE.visual_output.contact_sheet if STATE.visual_output else None
+    
+    return (visual_result, contact, audio_result, asr_result, yolo_result, 
+            ai_result, consensus_result, summary, get_video_list_html())
+
+
+def run_consensus():
+    """Run consensus analysis - supports both single and multi-video mode"""
+    # Sync current analysis to legacy state
+    STATE.sync_legacy_to_current()
+    
+    # Get all metrics from all videos
+    all_metrics = STATE.get_all_metrics()
+    
+    # Fallback to legacy single-video mode if no multi-video data
+    if not all_metrics:
+        if STATE.visual_output is None and STATE.audio_output is None:
+            return f"❌ {t('run_analysis_first')}"
+        
+        # Use legacy single video
+        metrics = VideoMetrics(path=str(STATE.video_path) if STATE.video_path else "")
+        metrics.visual = STATE.visual_output
+        metrics.audio = STATE.audio_output
+        metrics.asr = STATE.asr_output
+        metrics.yolo = STATE.yolo_output
+        all_metrics = [metrics]
     
     step = ConsensusStep()
-    input_data = ConsensusInput(video_metrics=[metrics])
+    input_data = ConsensusInput(video_metrics=all_metrics)
     STATE.consensus_output = step.run(input_data)
     
-    return format_consensus(STATE.consensus_output)
+    video_count = len(all_metrics)
+    return format_consensus(STATE.consensus_output, video_count)
 
 
 def run_all(language: str, progress=gr.Progress()):
@@ -860,13 +1242,26 @@ def run_all(language: str, progress=gr.Progress()):
     progress(0.65, desc="🤖 Step 5/6: AI Detection...")
     ai_result = _run_ai_detection_internal() if STATE.config.ai_detection.enabled else "*Disabled*"
     
+    # Sync results back to multi-video state
+    STATE.sync_legacy_to_current()
+    
     progress(0.85, desc="📊 Step 6/6: Generating Summary...")
     consensus_result = run_consensus()
     
     progress(1.0, desc=t('done'))
     
     # Generate summary
+    video_count = STATE.get_video_count()
     lines = ["=" * 25, t('quick_summary'), "=" * 25, ""]
+    
+    if video_count > 1:
+        lines.append(f"📈 Mode: Cross-Video Comparison ({video_count} videos)")
+        lines.append(f"✅ Analyzed: {STATE.get_analyzed_count()} videos")
+    else:
+        lines.append(f"📊 Mode: Single Video Analysis")
+    
+    lines.append("")
+    
     if STATE.visual_output:
         lines.append(f"📹 Camera: {STATE.visual_output.camera_angle}")
         lines.append(f"🎨 Color: {STATE.visual_output.hue_family}")
@@ -881,7 +1276,9 @@ def run_all(language: str, progress=gr.Progress()):
         lines.append(f"🤖 AI: {STATE.ai_output.verdict} ({STATE.ai_output.confidence:.0%})")
     
     summary = "\n".join(lines)
-    return visual_result, contact, audio_result, asr_result, yolo_result, ai_result, consensus_result, summary
+    video_list = get_video_list_html()
+    
+    return visual_result, contact, audio_result, asr_result, yolo_result, ai_result, consensus_result, summary, video_list
 
 
 def gen_report(progress=gr.Progress()):
@@ -1078,21 +1475,38 @@ def create_ui():
             # ========== Tab 1: Upload & Preview ==========
             with gr.Tab(t('tab_upload'), id="tab_upload"):
                 with gr.Row():
-                    # Left: Upload Section (wider)
+                    # Left: Upload Section
                     with gr.Column(scale=2, min_width=400):
                         gr.Markdown("### 📤 Video Upload")
-                        gr.Markdown("*Supports MP4, AVI, MOV, MKV. Max 500MB.*")
+                        gr.Markdown("*Supports MP4, AVI, MOV, MKV. Upload single or multiple videos.*")
                         
                         video_input = gr.Video(
                             label="Select Video File",
-                            height=320,
+                            height=280,
                             elem_classes=["video-preview"]
                         )
                         
+                        with gr.Row():
+                            add_video_btn = gr.Button(t('add_video'), size="sm", scale=1)
+                            clear_videos_btn = gr.Button(t('clear_all'), size="sm", variant="secondary", scale=1)
+                        
                         upload_status = gr.Textbox(
                             label="Upload Status",
-                            lines=3,
+                            lines=2,
                             interactive=False
+                        )
+                        
+                        # Video list for multi-video mode
+                        gr.Markdown("### 📋 " + t('video_list'))
+                        video_list_html = gr.HTML(
+                            value=get_video_list_html(),
+                            label="Video List"
+                        )
+                        
+                        video_selector = gr.Slider(
+                            minimum=1, maximum=10, step=1, value=1,
+                            label=t('select_video'),
+                            visible=False  # Hidden until multiple videos
                         )
                         
                         gr.Markdown("### ⚙️ Analysis Settings")
@@ -1134,12 +1548,19 @@ def create_ui():
                 
                 with gr.Row():
                     run_all_btn = gr.Button(
-                        "🎯 Analyze All (Recommended)",
+                        "🎯 Analyze Current Video",
                         variant="primary",
                         size="lg",
                         scale=2
                     )
+                    run_batch_btn = gr.Button(
+                        "📈 Analyze All Videos (Cross-Video)",
+                        variant="secondary",
+                        size="lg",
+                        scale=2
+                    )
                 
+                gr.Markdown("*Use 'Analyze Current' for single video, 'Analyze All' for multi-video comparison*")
                 gr.Markdown("**Individual Analysis Modules:**")
                 with gr.Row():
                     run_visual_btn = gr.Button(t('btn_visual'), size="sm")
@@ -1365,7 +1786,16 @@ def create_ui():
         
         # ========== Event Handlers ==========
         video_input.change(fn=upload_video, inputs=[video_input],
-                          outputs=[upload_status, audio_player, frame_gallery])
+                          outputs=[upload_status, audio_player, frame_gallery, video_list_html])
+        
+        add_video_btn.click(fn=add_video, inputs=[video_input],
+                           outputs=[video_list_html])
+        
+        clear_videos_btn.click(fn=clear_all_videos, inputs=[],
+                              outputs=[video_list_html, upload_status, audio_player, frame_gallery])
+        
+        video_selector.change(fn=lambda x: select_video(int(x)-1), inputs=[video_selector],
+                             outputs=[upload_status, audio_player, frame_gallery])
         
         run_visual_btn.click(fn=run_visual, outputs=[visual_result, contact_img])
         run_audio_btn.click(fn=run_audio, outputs=[audio_result])
@@ -1378,7 +1808,14 @@ def create_ui():
             fn=run_all,
             inputs=[language_select],
             outputs=[visual_result, contact_img, audio_result, asr_result,
-                     yolo_result, ai_result, consensus_result, summary_box]
+                     yolo_result, ai_result, consensus_result, summary_box, video_list_html]
+        )
+        
+        run_batch_btn.click(
+            fn=run_batch_analysis,
+            inputs=[language_select],
+            outputs=[visual_result, contact_img, audio_result, asr_result,
+                     yolo_result, ai_result, consensus_result, summary_box, video_list_html]
         )
         
         gen_report_btn.click(fn=gen_report, outputs=[report_status, report_file, pdf_file, pdf_preview])
