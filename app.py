@@ -946,21 +946,20 @@ def add_more_videos(video_files):
 def clear_all_videos():
     """Clear all videos"""
     STATE.reset()
-    # Return: video_list_header, video_list_radio, upload_status, audio_player, frame_gallery, video_input
-    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], None
+    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
 
 
 def select_video_from_list(index):
     """Select a video from the radio list (index is passed directly)"""
     if index is None or not STATE.videos:
-        return t('no_videos'), None, [], None
+        return t('no_videos'), None, []
     
     # Convert to int if needed
     if isinstance(index, str):
         try:
             index = int(index)
         except:
-            return t('no_videos'), None, [], None
+            return t('no_videos'), None, []
     
     if 0 <= index < len(STATE.videos):
         STATE.current_index = index
@@ -972,12 +971,11 @@ def select_video_from_list(index):
             num_frames = STATE.config.ui.gallery_frames
             frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames)
             audio_path = str(video.audio_path) if video.audio_path else None
-            video_path_str = str(video.video_path)
             
             status = f"📹 {t('video_n').format(n=index+1)}: {video.video_path.name}"
-            return status, audio_path, frame_paths, video_path_str
+            return status, audio_path, frame_paths
     
-    return t('no_videos'), None, [], None
+    return t('no_videos'), None, []
 
 
 def load_video_results(index):
@@ -1015,7 +1013,7 @@ def load_video_results(index):
 def delete_current_video():
     """Delete the currently selected video"""
     if not STATE.videos:
-        return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], None
+        return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
     
     idx = STATE.current_index
     if 0 <= idx < len(STATE.videos):
@@ -1032,16 +1030,15 @@ def delete_current_video():
             num_frames = STATE.config.ui.gallery_frames
             frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames) if video.video_path else []
             audio_path = str(video.audio_path) if video.audio_path else None
-            video_path_str = str(video.video_path) if video.video_path else None
             status = f"📹 {t('video_n').format(n=STATE.current_index+1)}: {video.video_path.name if video.video_path else 'N/A'}"
             choices = get_video_list_choices()
-            return get_video_list_header(), gr.update(choices=choices, value=STATE.current_index), status, audio_path, frame_paths, video_path_str
+            return get_video_list_header(), gr.update(choices=choices, value=STATE.current_index), status, audio_path, frame_paths
         else:
             STATE.video_path = None
             STATE.audio_path = None
-            return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], None
+            return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
     
-    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], None
+    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
 
 
 
@@ -1940,17 +1937,17 @@ def create_ui():
                             outputs=[video_list_header, video_list_radio])
         
         video_list_radio.change(fn=select_video_from_list, inputs=[video_list_radio],
-                               outputs=[upload_status, audio_player, frame_gallery, video_input])
+                               outputs=[upload_status, audio_player, frame_gallery])
         
         # Sync video selection between Upload tab and Analysis tab
         results_video_selector.change(fn=load_video_results, inputs=[results_video_selector],
                                      outputs=[visual_result, contact_img, audio_result, asr_result, yolo_result, ai_result])
         
         delete_video_btn.click(fn=delete_current_video, inputs=[],
-                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery, video_input])
+                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery])
         
         clear_videos_btn.click(fn=clear_all_videos, inputs=[],
-                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery, video_input])
+                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery])
         
         run_visual_btn.click(fn=run_visual, outputs=[visual_result, contact_img])
         run_audio_btn.click(fn=run_audio, outputs=[audio_result])
