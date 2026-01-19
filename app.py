@@ -424,14 +424,17 @@ def fmt_conf(value, fmt=".0%"):
     except:
         return "—"
 
-# Label mappings for more readable display
+# =============================================================================
+# Label Mappings - Convert technical/abbreviated labels to readable format
+# =============================================================================
+
 EMOTION_LABELS = {
-    # HuBERT SUPERB model labels
+    # HuBERT SUPERB model labels (abbreviated)
     "neu": "😐 Neutral",
     "hap": "😊 Happy",
     "ang": "😠 Angry",
     "sad": "😢 Sad",
-    # Full labels (some models use these)
+    # Full labels
     "neutral": "😐 Neutral",
     "happy": "😊 Happy",
     "angry": "😠 Angry",
@@ -441,17 +444,8 @@ EMOTION_LABELS = {
     "surprise": "😲 Surprise",
     "calm": "😌 Calm",
     "excited": "🤩 Excited",
-    # Fallbacks
     "unknown": "❓ Unknown",
     "n/a": "—",
-}
-
-PACE_LABELS = {
-    "very_fast": "⚡ Very Fast",
-    "fast": "🏃 Fast",
-    "normal": "🚶 Normal",
-    "slow": "🐢 Slow",
-    "very_slow": "🦥 Very Slow",
 }
 
 PROSODY_LABELS = {
@@ -461,39 +455,401 @@ PROSODY_LABELS = {
     "neutral": "😐 Neutral",
 }
 
-def readable_label(value: str, mapping: dict) -> str:
+# Camera & Visual Labels
+CAMERA_ANGLE_LABELS = {
+    "eye-level": "👁️ Eye Level (standard view)",
+    "eye level": "👁️ Eye Level (standard view)",
+    "overhead": "🔝 Overhead (top-down)",
+    "45° overhead": "📐 45° Overhead (bird's eye)",
+    "low angle": "⬆️ Low Angle (looking up)",
+    "high angle": "⬇️ High Angle (looking down)",
+    "dutch angle": "↗️ Dutch Angle (tilted)",
+    "close-up": "🔍 Close-up",
+    "extreme close-up": "🔬 Extreme Close-up",
+    "medium shot": "📷 Medium Shot",
+    "wide shot": "🏞️ Wide Shot",
+    "establishing shot": "🌆 Establishing Shot",
+}
+
+FOCAL_LENGTH_LABELS = {
+    "wide-angle": "📷 Wide Angle (< 35mm)",
+    "wide": "📷 Wide Angle",
+    "normal": "📸 Normal (35-70mm)",
+    "telephoto": "🔭 Telephoto (> 70mm)",
+    "macro": "🔬 Macro (extreme close)",
+}
+
+COLOR_HUE_LABELS = {
+    "red": "🔴 Red",
+    "orange": "🟠 Orange",
+    "yellow": "🟡 Yellow",
+    "yellow-green": "🟢 Yellow-Green",
+    "green": "🟢 Green",
+    "cyan": "🩵 Cyan",
+    "blue": "🔵 Blue",
+    "purple": "🟣 Purple",
+    "magenta": "💜 Magenta",
+    "pink": "💗 Pink",
+    "brown": "🟤 Brown",
+    "gray": "⚪ Gray",
+    "grey": "⚪ Gray",
+    "white": "⬜ White",
+    "black": "⬛ Black",
+    "warm": "🌅 Warm Tones",
+    "cool": "❄️ Cool Tones",
+    "neutral": "⚪ Neutral",
+}
+
+SATURATION_LABELS = {
+    "low": "🌫️ Low (muted/desaturated)",
+    "moderate": "🎨 Moderate (balanced)",
+    "high": "🌈 High (vivid/vibrant)",
+    "very low": "⬜ Very Low (almost gray)",
+    "very high": "💥 Very High (oversaturated)",
+}
+
+BRIGHTNESS_LABELS = {
+    "dark": "🌑 Dark",
+    "dim": "🌘 Dim",
+    "medium": "🌗 Medium",
+    "bright": "🌕 Bright",
+    "very bright": "☀️ Very Bright",
+    "low": "🌑 Low (dark)",
+    "high": "🌕 High (bright)",
+}
+
+CONTRAST_LABELS = {
+    "low": "📊 Low Contrast (flat)",
+    "medium": "📈 Medium Contrast",
+    "high": "📉 High Contrast (dramatic)",
+    "very low": "➖ Very Low",
+    "very high": "➕ Very High",
+}
+
+LIGHTING_LABELS = {
+    "natural": "☀️ Natural Light",
+    "artificial": "💡 Artificial Light",
+    "mixed": "🔆 Mixed Lighting",
+    "soft": "🌤️ Soft Light",
+    "hard": "🔦 Hard Light",
+    "ambient": "💫 Ambient Light",
+    "studio": "🎬 Studio Lighting",
+    "backlit": "🌅 Backlit",
+    "side": "↔️ Side Light",
+    "front": "⬆️ Front Light",
+}
+
+# Audio Labels
+BGM_STYLE_LABELS = {
+    "pop": "🎤 Pop",
+    "rock": "🎸 Rock",
+    "electronic": "🎹 Electronic",
+    "classical": "🎻 Classical",
+    "jazz": "🎷 Jazz",
+    "hip-hop": "🎧 Hip-Hop",
+    "hip hop": "🎧 Hip-Hop",
+    "r&b": "🎵 R&B",
+    "rnb": "🎵 R&B",
+    "country": "🤠 Country",
+    "folk": "🪕 Folk",
+    "ambient": "🌊 Ambient",
+    "cinematic": "🎬 Cinematic",
+    "acoustic": "🎸 Acoustic",
+    "indie": "🎭 Indie",
+    "lo-fi": "📻 Lo-Fi",
+    "lofi": "📻 Lo-Fi",
+    "orchestral": "🎼 Orchestral",
+    "upbeat": "⬆️ Upbeat",
+    "chill": "😌 Chill",
+    "energetic": "⚡ Energetic",
+    "relaxing": "🧘 Relaxing",
+    "dramatic": "🎭 Dramatic",
+    "inspirational": "✨ Inspirational",
+    "nostalgic": "📼 Nostalgic",
+    "modern": "🆕 Modern",
+    "traditional": "🏛️ Traditional",
+}
+
+MOOD_LABELS = {
+    "happy": "😊 Happy",
+    "sad": "😢 Sad",
+    "energetic": "⚡ Energetic",
+    "calm": "😌 Calm",
+    "tense": "😰 Tense",
+    "romantic": "💕 Romantic",
+    "mysterious": "🔮 Mysterious",
+    "uplifting": "🌟 Uplifting",
+    "melancholic": "😔 Melancholic",
+    "aggressive": "💢 Aggressive",
+    "peaceful": "🕊️ Peaceful",
+    "exciting": "🎉 Exciting",
+    "dark": "🌑 Dark",
+    "bright": "☀️ Bright",
+    "neutral": "😐 Neutral",
+    "joyful": "🥳 Joyful",
+    "somber": "😞 Somber",
+    "triumphant": "🏆 Triumphant",
+    "suspenseful": "😱 Suspenseful",
+    "relaxed": "🧘 Relaxed",
+}
+
+INSTRUMENT_LABELS = {
+    "piano": "🎹 Piano",
+    "guitar": "🎸 Guitar",
+    "drums": "🥁 Drums",
+    "bass": "🎸 Bass",
+    "violin": "🎻 Violin",
+    "cello": "🎻 Cello",
+    "flute": "🎶 Flute",
+    "trumpet": "🎺 Trumpet",
+    "saxophone": "🎷 Saxophone",
+    "synthesizer": "🎹 Synthesizer",
+    "synth": "🎹 Synthesizer",
+    "vocals": "🎤 Vocals",
+    "voice": "🎤 Voice",
+    "strings": "🎻 Strings",
+    "brass": "🎺 Brass",
+    "woodwind": "🎶 Woodwind",
+    "percussion": "🥁 Percussion",
+    "organ": "🎹 Organ",
+    "harp": "🎵 Harp",
+    "ukulele": "🎸 Ukulele",
+    "electronic": "🎧 Electronic",
+}
+
+# Scene Categories
+SCENE_LABELS = {
+    "kitchen": "🍳 Kitchen",
+    "kitchen countertop": "🍳 Kitchen Countertop",
+    "living room": "🛋️ Living Room",
+    "bedroom": "🛏️ Bedroom",
+    "bathroom": "🚿 Bathroom",
+    "office": "💼 Office",
+    "outdoor": "🌳 Outdoor",
+    "restaurant": "🍽️ Restaurant",
+    "studio": "🎬 Studio",
+    "gym": "🏋️ Gym",
+    "street": "🛣️ Street",
+    "park": "🌲 Park",
+    "beach": "🏖️ Beach",
+    "mountain": "⛰️ Mountain",
+    "forest": "🌲 Forest",
+    "city": "🏙️ City",
+    "indoor": "🏠 Indoor",
+    "home": "🏠 Home",
+    "store": "🏪 Store",
+    "mall": "🛒 Mall",
+    "school": "🏫 School",
+    "hospital": "🏥 Hospital",
+    "church": "⛪ Church",
+    "museum": "🏛️ Museum",
+    "library": "📚 Library",
+    "airport": "✈️ Airport",
+    "train station": "🚂 Train Station",
+    "subway": "🚇 Subway",
+    "car": "🚗 Car",
+    "bus": "🚌 Bus",
+    "airplane": "✈️ Airplane",
+    "boat": "🚢 Boat",
+    "pool": "🏊 Pool",
+    "sports field": "🏟️ Sports Field",
+    "stadium": "🏟️ Stadium",
+    "concert": "🎤 Concert",
+    "wedding": "💒 Wedding",
+    "party": "🎉 Party",
+    "meeting": "👥 Meeting",
+    "conference": "📊 Conference",
+}
+
+# YOLO Object Labels
+OBJECT_LABELS = {
+    "person": "👤 Person",
+    "bicycle": "🚲 Bicycle",
+    "car": "🚗 Car",
+    "motorcycle": "🏍️ Motorcycle",
+    "airplane": "✈️ Airplane",
+    "bus": "🚌 Bus",
+    "train": "🚂 Train",
+    "truck": "🚚 Truck",
+    "boat": "🚢 Boat",
+    "traffic light": "🚦 Traffic Light",
+    "fire hydrant": "🧯 Fire Hydrant",
+    "stop sign": "🛑 Stop Sign",
+    "parking meter": "🅿️ Parking Meter",
+    "bench": "🪑 Bench",
+    "bird": "🐦 Bird",
+    "cat": "🐱 Cat",
+    "dog": "🐕 Dog",
+    "horse": "🐴 Horse",
+    "sheep": "🐑 Sheep",
+    "cow": "🐄 Cow",
+    "elephant": "🐘 Elephant",
+    "bear": "🐻 Bear",
+    "zebra": "🦓 Zebra",
+    "giraffe": "🦒 Giraffe",
+    "backpack": "🎒 Backpack",
+    "umbrella": "☂️ Umbrella",
+    "handbag": "👜 Handbag",
+    "tie": "👔 Tie",
+    "suitcase": "🧳 Suitcase",
+    "frisbee": "🥏 Frisbee",
+    "skis": "🎿 Skis",
+    "snowboard": "🏂 Snowboard",
+    "sports ball": "⚽ Sports Ball",
+    "kite": "🪁 Kite",
+    "baseball bat": "⚾ Baseball Bat",
+    "baseball glove": "🧤 Baseball Glove",
+    "skateboard": "🛹 Skateboard",
+    "surfboard": "🏄 Surfboard",
+    "tennis racket": "🎾 Tennis Racket",
+    "bottle": "🍼 Bottle",
+    "wine glass": "🍷 Wine Glass",
+    "cup": "☕ Cup",
+    "fork": "🍴 Fork",
+    "knife": "🔪 Knife",
+    "spoon": "🥄 Spoon",
+    "bowl": "🥣 Bowl",
+    "banana": "🍌 Banana",
+    "apple": "🍎 Apple",
+    "sandwich": "🥪 Sandwich",
+    "orange": "🍊 Orange",
+    "broccoli": "🥦 Broccoli",
+    "carrot": "🥕 Carrot",
+    "hot dog": "🌭 Hot Dog",
+    "pizza": "🍕 Pizza",
+    "donut": "🍩 Donut",
+    "cake": "🎂 Cake",
+    "chair": "🪑 Chair",
+    "couch": "🛋️ Couch",
+    "potted plant": "🪴 Potted Plant",
+    "bed": "🛏️ Bed",
+    "dining table": "🍽️ Dining Table",
+    "toilet": "🚽 Toilet",
+    "tv": "📺 TV",
+    "laptop": "💻 Laptop",
+    "mouse": "🖱️ Mouse",
+    "remote": "📱 Remote",
+    "keyboard": "⌨️ Keyboard",
+    "cell phone": "📱 Cell Phone",
+    "microwave": "📦 Microwave",
+    "oven": "🔥 Oven",
+    "toaster": "🍞 Toaster",
+    "sink": "🚰 Sink",
+    "refrigerator": "🧊 Refrigerator",
+    "book": "📚 Book",
+    "clock": "🕐 Clock",
+    "vase": "🏺 Vase",
+    "scissors": "✂️ Scissors",
+    "teddy bear": "🧸 Teddy Bear",
+    "hair drier": "💇 Hair Drier",
+    "toothbrush": "🪥 Toothbrush",
+}
+
+# Material Labels
+MATERIAL_LABELS = {
+    "wood": "🪵 Wood",
+    "metal": "🔩 Metal",
+    "plastic": "🧴 Plastic",
+    "glass": "🪟 Glass",
+    "fabric": "🧵 Fabric",
+    "leather": "👜 Leather",
+    "paper": "📄 Paper",
+    "stone": "🪨 Stone",
+    "ceramic": "🏺 Ceramic",
+    "concrete": "🧱 Concrete",
+    "rubber": "⚫ Rubber",
+    "foam": "🧽 Foam",
+    "stainless steel": "🥈 Stainless Steel",
+    "steel": "🥈 Steel",
+    "aluminum": "🥈 Aluminum",
+    "copper": "🟤 Copper",
+    "brass": "🟡 Brass",
+    "marble": "⬜ Marble",
+    "granite": "⬛ Granite",
+    "tile": "🔲 Tile",
+    "carpet": "🟫 Carpet",
+    "velvet": "💜 Velvet",
+    "cotton": "☁️ Cotton",
+    "silk": "✨ Silk",
+    "wool": "🐑 Wool",
+    "denim": "👖 Denim",
+    "canvas": "🎨 Canvas",
+}
+
+# Environment Types
+ENVIRONMENT_LABELS = {
+    "home kitchen": "🏠 Home Kitchen",
+    "professional kitchen": "👨‍🍳 Professional Kitchen",
+    "outdoor cooking": "🏕️ Outdoor Cooking",
+    "studio kitchen": "🎬 Studio Kitchen",
+    "restaurant": "🍽️ Restaurant",
+    "bakery": "🥖 Bakery",
+    "cafe": "☕ Cafe",
+    "bar": "🍸 Bar",
+    "food truck": "🚚 Food Truck",
+    "laboratory": "🔬 Laboratory",
+    "workshop": "🔧 Workshop",
+    "office": "💼 Office",
+}
+
+# AI Detection Verdicts
+AI_VERDICT_LABELS = {
+    "real": "✅ Real (Authentic)",
+    "likely real": "✅ Likely Real",
+    "deepfake": "🎭 Deepfake Detected",
+    "synthetic": "🤖 AI-Generated Synthetic",
+    "suspicious": "⚠️ Suspicious",
+    "ai-generated": "🤖 AI-Generated",
+    "unknown": "❓ Unknown",
+}
+
+def readable_label(value: str, mapping: dict = None, capitalize: bool = True) -> str:
     """Convert abbreviated or technical labels to readable format"""
-    if not value:
+    if not value or value == "N/A":
         return "—"
-    # Try exact match first
-    lower_val = str(value).lower().strip()
-    if lower_val in mapping:
-        return mapping[lower_val]
-    # Try partial match
-    for key, readable in mapping.items():
-        if key in lower_val or lower_val in key:
-            return readable
-    # Return original with capitalization
-    return value.capitalize() if value else "—"
+    
+    str_val = str(value).strip()
+    lower_val = str_val.lower()
+    
+    if mapping:
+        # Try exact match first
+        if lower_val in mapping:
+            return mapping[lower_val]
+        # Try partial match
+        for key, readable in mapping.items():
+            if key in lower_val or lower_val in key:
+                return readable
+    
+    # Format nicely: replace underscores, capitalize words
+    if capitalize:
+        formatted = str_val.replace('_', ' ').replace('-', ' ')
+        return ' '.join(word.capitalize() for word in formatted.split())
+    return str_val
+
+def format_label_with_mapping(value: str, mapping: dict) -> str:
+    """Format label with emoji mapping, fallback to original with nice formatting"""
+    return readable_label(value, mapping, capitalize=True)
 
 def format_visual(output: VisualOutput) -> str:
     if not output or not output.success:
         return f"❌ {t('analysis_failed')}"
     
-    # Scene categories with confidence (safe handling)
+    # Scene categories with confidence (safe handling, with readable labels)
     scene_cats = output.scene_categories if isinstance(output.scene_categories, list) else []
     scene_lines = []
     for s in scene_cats[:5]:
         if isinstance(s, dict):
-            label = s.get('label', '?')
+            raw_label = s.get('label', '?')
+            label = readable_label(raw_label, SCENE_LABELS)
             prob = s.get('probability', 0)
             scene_lines.append(f"| {label} | **{fmt_conf(prob, '.1%')}** |")
         else:
-            scene_lines.append(f"| {s} | — |")
+            label = readable_label(str(s), SCENE_LABELS)
+            scene_lines.append(f"| {label} | — |")
     scenes = "\n".join(scene_lines) if scene_lines else "| N/A | — |"
     
-    # Helper to format distribution (handles dict, list, and edge cases)
-    def format_dist(detail, key='distribution'):
+    # Helper to format distribution (handles dict, list, and edge cases) with label mapping
+    def format_dist(detail, key='distribution', label_map=None):
         if not detail:
             return 0, "—"
         dist = detail.get(key, {})
@@ -503,17 +859,19 @@ def format_visual(output: VisualOutput) -> str:
                 sorted_items = sorted(dist.items(), key=lambda x: x[1] if isinstance(x[1], (int, float)) else 0, reverse=True)[:3]
                 parts = []
                 for k, v in sorted_items:
+                    label = readable_label(k, label_map) if label_map else k
                     if isinstance(v, (int, float)) and v > 0:
-                        parts.append(f"{k}: {v:.0%}")
+                        parts.append(f"{label}: {v:.0%}")
                     elif v:
-                        parts.append(f"{k}: {v}")
+                        parts.append(f"{label}: {v}")
                 dist_str = " | ".join(parts) if parts else "—"
             elif isinstance(dist, list) and dist:
                 # List of dicts like [{'label': 'x', 'count': 10, 'percentage': 0.5}, ...]
                 parts = []
                 for d in dist[:3]:
                     if isinstance(d, dict):
-                        label = d.get('label', d.get('name', d.get('value', '?')))
+                        raw_label = d.get('label', d.get('name', d.get('value', '?')))
+                        label = readable_label(raw_label, label_map) if label_map else raw_label
                         pct = d.get('percentage', d.get('count', 0))
                         if isinstance(pct, (int, float)) and pct > 0:
                             parts.append(f"{label}: {pct:.0%}")
@@ -530,39 +888,49 @@ def format_visual(output: VisualOutput) -> str:
     
     # Camera angle distribution with confidence
     camera_detail = output.camera_angle_detail or {}
-    camera_conf, camera_dist_str = format_dist(camera_detail)
+    camera_conf, camera_dist_str = format_dist(camera_detail, label_map=CAMERA_ANGLE_LABELS)
+    camera_angle_display = readable_label(output.camera_angle, CAMERA_ANGLE_LABELS)
+    
+    # Focal length
+    focal_display = readable_label(output.focal_length_tendency, FOCAL_LENGTH_LABELS)
     
     # Hue distribution with confidence
     hue_detail = output.hue_detail or {}
-    hue_conf, hue_dist_str = format_dist(hue_detail)
+    hue_conf, hue_dist_str = format_dist(hue_detail, label_map=COLOR_HUE_LABELS)
+    hue_display = readable_label(output.hue_family, COLOR_HUE_LABELS)
     
     # Saturation distribution
     sat_detail = output.saturation_detail or {}
-    sat_conf, sat_dist_str = format_dist(sat_detail)
+    sat_conf, sat_dist_str = format_dist(sat_detail, label_map=SATURATION_LABELS)
+    sat_display = readable_label(output.saturation_band, SATURATION_LABELS)
     
     # Brightness distribution
     bright_detail = output.brightness_detail or {}
-    bright_conf, bright_dist_str = format_dist(bright_detail)
+    bright_conf, bright_dist_str = format_dist(bright_detail, label_map=BRIGHTNESS_LABELS)
+    bright_display = readable_label(output.brightness_band, BRIGHTNESS_LABELS)
+    
+    # Contrast
+    contrast_display = readable_label(output.contrast, CONTRAST_LABELS)
     
     # CCT interpretation
     cct = output.cct_mean
     if cct < 3500:
-        cct_desc = "Warm (incandescent/sunset)"
+        cct_desc = "🌅 Warm (incandescent/sunset)"
     elif cct < 5500:
-        cct_desc = "Neutral (daylight balanced)"
+        cct_desc = "☀️ Neutral (daylight balanced)"
     else:
-        cct_desc = "Cool (overcast/blue hour)"
+        cct_desc = "❄️ Cool (overcast/blue hour)"
     
     # Cut rate interpretation
     cut_rate = output.cuts / max(output.duration, 1) * 60  # cuts per minute
     if cut_rate > 30:
-        pace_desc = "Very fast editing"
+        pace_desc = "⚡ Very fast editing"
     elif cut_rate > 15:
-        pace_desc = "Dynamic editing"
+        pace_desc = "🏃 Dynamic editing"
     elif cut_rate > 5:
-        pace_desc = "Moderate pacing"
+        pace_desc = "🚶 Moderate pacing"
     else:
-        pace_desc = "Slow, contemplative"
+        pace_desc = "🧘 Slow, contemplative"
     
     return f"""## 📹 Visual Analysis Results
 
@@ -578,17 +946,17 @@ def format_visual(output: VisualOutput) -> str:
 
 | Metric | Value | Confidence | Distribution |
 |:-------|:------|:----------:|:-------------|
-| **Camera Angle** | {output.camera_angle} | {fmt_conf(camera_conf)} | {camera_dist_str} |
-| **Focal Length** | {output.focal_length_tendency} | — | Wide/Normal/Telephoto |
+| **Camera Angle** | {camera_angle_display} | {fmt_conf(camera_conf)} | {camera_dist_str} |
+| **Focal Length** | {focal_display} | — | Wide/Normal/Telephoto |
 
 ### 🎨 Color Analysis
 
 | Metric | Value | Confidence | Distribution |
 |:-------|:------|:----------:|:-------------|
-| **Dominant Hue** | {output.hue_family} | {fmt_conf(hue_conf)} | {hue_dist_str} |
-| **Saturation** | {output.saturation_band} | {fmt_conf(sat_conf)} | {sat_dist_str} |
-| **Brightness** | {output.brightness_band} | {fmt_conf(bright_conf)} | {bright_dist_str} |
-| **Contrast** | {output.contrast} | — | Dynamic range |
+| **Dominant Hue** | {hue_display} | {fmt_conf(hue_conf)} | {hue_dist_str} |
+| **Saturation** | {sat_display} | {fmt_conf(sat_conf)} | {sat_dist_str} |
+| **Brightness** | {bright_display} | {fmt_conf(bright_conf)} | {bright_dist_str} |
+| **Contrast** | {contrast_display} | — | Dynamic range |
 | **Color Temp (CCT)** | {output.cct_mean:.0f}K | — | {cct_desc} |
 
 ### ✂️ Editing Pace
@@ -614,29 +982,33 @@ def format_audio(output: AudioOutput) -> str:
         return f"❌ {t('analysis_failed')}"
     
     instruments = output.instruments.get('detected_instruments', [])
-    inst_str = ", ".join(instruments[:5]) if instruments else "N/A"
+    inst_str = ", ".join([readable_label(i, INSTRUMENT_LABELS) for i in instruments[:5]]) if instruments else "N/A"
     
     # Add explanations based on values
-    tempo_desc = "Fast-paced" if output.tempo_bpm > 120 else "Medium tempo" if output.tempo_bpm > 80 else "Slow, relaxed"
-    percussive_desc = "Heavy drums" if output.percussive_ratio > 0.5 else "Moderate beats" if output.percussive_ratio > 0.2 else "Light rhythm"
+    tempo_desc = "⚡ Fast-paced" if output.tempo_bpm > 120 else "🎵 Medium tempo" if output.tempo_bpm > 80 else "🧘 Slow, relaxed"
+    percussive_desc = "🥁 Heavy drums" if output.percussive_ratio > 0.5 else "🎵 Moderate beats" if output.percussive_ratio > 0.2 else "🎶 Light rhythm"
     
-    # BGM style detail with confidence (all_scores is a dict)
+    # BGM style detail with confidence (all_scores is a dict) - with readable labels
     bgm_detail = output.bgm_style_detail or {}
     bgm_scores = bgm_detail.get('all_scores', {})
     bgm_sorted = [(k, v) for k, v in sorted(bgm_scores.items(), key=lambda x: x[1], reverse=True)[:5] if v and v > 0] if bgm_scores else []
-    bgm_top3 = "\n".join([f"| {label} | **{fmt_conf(score, '.1%')}** |" for label, score in bgm_sorted]) if bgm_sorted else "| N/A | — |"
+    bgm_top3 = "\n".join([f"| {readable_label(label, BGM_STYLE_LABELS)} | **{fmt_conf(score, '.1%')}** |" for label, score in bgm_sorted]) if bgm_sorted else "| N/A | — |"
     
-    # Mood detail with confidence (all_scores is a dict)
+    # Mood detail with confidence (all_scores is a dict) - with readable labels
     mood_detail = output.mood_detail or {}
     mood_scores = mood_detail.get('all_scores', {})
     mood_sorted = [(k, v) for k, v in sorted(mood_scores.items(), key=lambda x: x[1], reverse=True)[:5] if v and v > 0] if mood_scores else []
-    mood_top3 = "\n".join([f"| {label} | **{fmt_conf(score, '.1%')}** |" for label, score in mood_sorted]) if mood_sorted else "| N/A | — |"
+    mood_top3 = "\n".join([f"| {readable_label(label, MOOD_LABELS)} | **{fmt_conf(score, '.1%')}** |" for label, score in mood_sorted]) if mood_sorted else "| N/A | — |"
     
-    # Instruments detail with confidence (instrument_scores is a dict)
+    # Instruments detail with confidence (instrument_scores is a dict) - with readable labels
     inst_detail = output.instruments or {}
     inst_scores = inst_detail.get('instrument_scores', {})
     inst_sorted = [(k, v) for k, v in sorted(inst_scores.items(), key=lambda x: x[1], reverse=True)[:5] if v and v > 0] if inst_scores else []
-    inst_top5 = "\n".join([f"| {label} | **{fmt_conf(score, '.1%')}** |" for label, score in inst_sorted]) if inst_sorted else "| N/A | — |"
+    inst_top5 = "\n".join([f"| {readable_label(label, INSTRUMENT_LABELS)} | **{fmt_conf(score, '.1%')}** |" for label, score in inst_sorted]) if inst_sorted else "| N/A | — |"
+    
+    # Readable dominant labels
+    bgm_style_display = readable_label(output.bgm_style, BGM_STYLE_LABELS)
+    mood_display = readable_label(output.mood, MOOD_LABELS)
     
     return f"""## 🎵 Audio Analysis Results
 
@@ -654,7 +1026,7 @@ def format_audio(output: AudioOutput) -> str:
 |:------|:----------:|
 {bgm_top3}
 
-**Dominant**: {output.bgm_style} ({fmt_conf(output.bgm_style_confidence, '.1%')})
+**Dominant**: {bgm_style_display} ({fmt_conf(output.bgm_style_confidence, '.1%')})
 
 ### 😊 Mood Analysis (CLAP)
 
@@ -662,7 +1034,7 @@ def format_audio(output: AudioOutput) -> str:
 |:-----|:----------:|
 {mood_top3}
 
-**Dominant**: {output.mood} ({fmt_conf(output.mood_confidence, '.1%')})
+**Dominant**: {mood_display} ({fmt_conf(output.mood_confidence, '.1%')})
 
 ### 🎹 Instruments Detection (CLAP)
 
@@ -791,45 +1163,54 @@ def format_yolo(output: YOLOOutput) -> str:
     object_counts = detection.get('object_counts', {})
     avg_confidence = detection.get('avg_confidence', {})
     
-    # Objects with confidence
+    # Objects with confidence - with readable labels
     objects_str = "\n".join([
-        f"| {obj} | {cnt} | {fmt_conf(avg_confidence.get(obj, 0), '.1%')} |"
+        f"| {readable_label(obj, OBJECT_LABELS)} | {cnt} | {fmt_conf(avg_confidence.get(obj, 0), '.1%')} |"
         for obj, cnt in sorted(object_counts.items(), key=lambda x: x[1], reverse=True)[:10]
     ])
     
-    # Environment confidence
+    # Environment confidence with readable label
     env_conf = environment.get('confidence', 0)
+    env_type_display = readable_label(environment.get('environment_type', 'N/A'), ENVIRONMENT_LABELS)
     
-    # Helper to safely join items (handles list, dict, or other types)
-    def safe_join_items(items, max_items=5):
+    # Helper to safely join items (handles list, dict, or other types) with label mapping
+    def safe_join_items(items, max_items=5, label_map=None):
         if not items:
             return "N/A"
         if isinstance(items, dict):
             # Dict like {'red': 10, 'blue': 5}
             sorted_items = sorted(items.items(), key=lambda x: x[1] if isinstance(x[1], (int, float)) else 0, reverse=True)
-            return ", ".join([str(k) for k, v in sorted_items[:max_items]])
+            return ", ".join([readable_label(str(k), label_map) for k, v in sorted_items[:max_items]])
         elif isinstance(items, list):
             result = []
             for item in items[:max_items]:
                 if isinstance(item, dict):
-                    result.append(str(item.get('color', item.get('material', item.get('name', item.get('label', '?'))))))
+                    raw_label = str(item.get('color', item.get('material', item.get('name', item.get('label', '?')))))
+                    result.append(readable_label(raw_label, label_map))
                 else:
-                    result.append(str(item))
+                    result.append(readable_label(str(item), label_map))
             return ", ".join(result)
         else:
-            return str(items)
+            return readable_label(str(items), label_map)
     
-    # Colors section with confidence
+    # Colors section with confidence - with readable labels
     colors_section = ""
     if output.colors:
         colors = output.colors
         if isinstance(colors, dict):
             colors_detail = colors.get('color_detail', [])
             if colors_detail and isinstance(colors_detail, list):
-                colors_str = "\n".join([
-                    f"| {c.get('color', '?') if isinstance(c, dict) else c} | {c.get('count', 0) if isinstance(c, dict) else '-'} | {c.get('percentage', 0):.1%} |" if isinstance(c, dict) else f"| {c} | - | - |"
-                    for c in colors_detail[:6]
-                ])
+                color_rows = []
+                for c in colors_detail[:6]:
+                    if isinstance(c, dict):
+                        raw_color = c.get('color', '?')
+                        color_display = readable_label(raw_color, COLOR_HUE_LABELS)
+                        count = c.get('count', 0)
+                        pct = c.get('percentage', 0)
+                        color_rows.append(f"| {color_display} | {count} | {fmt_conf(pct, '.1%')} |")
+                    else:
+                        color_rows.append(f"| {readable_label(str(c), COLOR_HUE_LABELS)} | - | — |")
+                colors_str = "\n".join(color_rows)
                 colors_section = f"""
 ### 🎨 Object Colors
 
@@ -840,19 +1221,26 @@ def format_yolo(output: YOLOOutput) -> str:
             else:
                 dom_colors = colors.get('dominant_colors', colors.get('all_colors', []))
                 if dom_colors:
-                    colors_section = f"\n### 🎨 Object Colors\n**Dominant**: {safe_join_items(dom_colors)}\n"
+                    colors_section = f"\n### 🎨 Object Colors\n**Dominant**: {safe_join_items(dom_colors, label_map=COLOR_HUE_LABELS)}\n"
     
-    # Materials section with confidence
+    # Materials section with confidence - with readable labels
     materials_section = ""
     if output.materials:
         mats = output.materials
         if isinstance(mats, dict):
             mats_detail = mats.get('material_detail', [])
             if mats_detail and isinstance(mats_detail, list):
-                mats_str = "\n".join([
-                    f"| {m.get('material', '?') if isinstance(m, dict) else m} | {m.get('count', 0) if isinstance(m, dict) else '-'} | {m.get('percentage', 0):.1%} |" if isinstance(m, dict) else f"| {m} | - | - |"
-                    for m in mats_detail[:6]
-                ])
+                mat_rows = []
+                for m in mats_detail[:6]:
+                    if isinstance(m, dict):
+                        raw_mat = m.get('material', '?')
+                        mat_display = readable_label(raw_mat, MATERIAL_LABELS)
+                        count = m.get('count', 0)
+                        pct = m.get('percentage', 0)
+                        mat_rows.append(f"| {mat_display} | {count} | {fmt_conf(pct, '.1%')} |")
+                    else:
+                        mat_rows.append(f"| {readable_label(str(m), MATERIAL_LABELS)} | - | — |")
+                mats_str = "\n".join(mat_rows)
                 materials_section = f"""
 ### 🧱 Materials Detected
 
@@ -863,7 +1251,7 @@ def format_yolo(output: YOLOOutput) -> str:
             else:
                 dom_mats = mats.get('dominant_materials', mats.get('all_materials', []))
                 if dom_mats:
-                    materials_section = f"\n### 🧱 Materials Detected\n**Dominant**: {safe_join_items(dom_mats)}\n"
+                    materials_section = f"\n### 🧱 Materials Detected\n**Dominant**: {safe_join_items(dom_mats, label_map=MATERIAL_LABELS)}\n"
     
     return f"""## 🔍 Object Detection Results
 
@@ -871,7 +1259,7 @@ def format_yolo(output: YOLOOutput) -> str:
 
 | Metric | Value | Confidence |
 |:-------|:------|:----------:|
-| **Environment Type** | {environment.get('environment_type', 'N/A')} | {fmt_conf(env_conf)} |
+| **Environment Type** | {env_type_display} | {fmt_conf(env_conf)} |
 | **Activity Style** | {environment.get('cooking_style', 'N/A')} | — |
 
 ### 📦 Object Detection Statistics
@@ -918,54 +1306,68 @@ def format_consensus(output: ConsensusOutput, video_count: int = 1) -> str:
         mode_icon = "📈"
         comparison_note = f"\n> 📊 *Aggregated from {video_count} videos using majority voting (categorical) and median (numerical)*\n"
     
-    # Build distribution details for categorical metrics
-    def format_distribution(detail: Dict) -> str:
+    # Build distribution details for categorical metrics with readable labels
+    def format_distribution(detail: Dict, label_map: dict = None) -> str:
         if not detail or not detail.get('distribution'):
             return ""
         dist = detail.get('distribution', [])
         if len(dist) <= 1:
             return ""
-        items = [f"`{d['value']}` ({d['percentage']:.0f}%)" for d in dist[:3]]
-        return " | ".join(items)
+        items = []
+        for d in dist[:3]:
+            value = d.get('value', '?')
+            readable_val = readable_label(value, label_map) if label_map else value
+            pct = d.get('percentage', 0)
+            if pct > 0:
+                items.append(f"`{readable_val}` ({pct:.0f}%)")
+        return " | ".join(items) if items else ""
     
-    # Camera distribution
-    camera_dist = format_distribution(getattr(output, 'camera_angle_detail', None))
-    camera_row = f"| **Camera Angle** | {output.camera_angle} | {camera_dist if camera_dist else '—'} |"
+    # Camera distribution with readable labels
+    camera_dist = format_distribution(getattr(output, 'camera_angle_detail', None), CAMERA_ANGLE_LABELS)
+    camera_display = readable_label(output.camera_angle, CAMERA_ANGLE_LABELS)
+    camera_row = f"| **Camera Angle** | {camera_display} | {camera_dist if camera_dist else '—'} |"
     
-    # Hue distribution
-    hue_dist = format_distribution(getattr(output, 'hue_detail', None))
-    hue_row = f"| **Hue Family** | {output.hue_family} | {hue_dist if hue_dist else '—'} |"
+    # Hue distribution with readable labels
+    hue_dist = format_distribution(getattr(output, 'hue_detail', None), COLOR_HUE_LABELS)
+    hue_display = readable_label(output.hue_family, COLOR_HUE_LABELS)
+    hue_row = f"| **Hue Family** | {hue_display} | {hue_dist if hue_dist else '—'} |"
     
-    # Saturation distribution
-    sat_dist = format_distribution(getattr(output, 'saturation_detail', None))
-    sat_row = f"| **Saturation** | {output.saturation} | {sat_dist if sat_dist else '—'} |"
+    # Saturation distribution with readable labels
+    sat_dist = format_distribution(getattr(output, 'saturation_detail', None), SATURATION_LABELS)
+    sat_display = readable_label(output.saturation, SATURATION_LABELS)
+    sat_row = f"| **Saturation** | {sat_display} | {sat_dist if sat_dist else '—'} |"
     
-    # Brightness distribution
-    bright_dist = format_distribution(getattr(output, 'brightness_detail', None))
-    bright_row = f"| **Brightness** | {output.brightness} | {bright_dist if bright_dist else '—'} |"
+    # Brightness distribution with readable labels
+    bright_dist = format_distribution(getattr(output, 'brightness_detail', None), BRIGHTNESS_LABELS)
+    bright_display = readable_label(output.brightness, BRIGHTNESS_LABELS)
+    bright_row = f"| **Brightness** | {bright_display} | {bright_dist if bright_dist else '—'} |"
     
-    # Scene distribution
-    scene_dist = format_distribution(getattr(output, 'scene_category_detail', None))
-    scene_row = f"| **Scene** | {output.scene_category} | {scene_dist if scene_dist else '—'} |"
+    # Scene distribution with readable labels
+    scene_dist = format_distribution(getattr(output, 'scene_category_detail', None), SCENE_LABELS)
+    scene_display = readable_label(output.scene_category, SCENE_LABELS)
+    scene_row = f"| **Scene** | {scene_display} | {scene_dist if scene_dist else '—'} |"
     
-    # BGM Style distribution
-    bgm_dist = format_distribution(getattr(output, 'bgm_style_detail', None))
-    bgm_row = f"| **BGM Style** | {output.bgm_style} | {bgm_dist if bgm_dist else '—'} |"
+    # BGM Style distribution with readable labels
+    bgm_dist = format_distribution(getattr(output, 'bgm_style_detail', None), BGM_STYLE_LABELS)
+    bgm_display = readable_label(output.bgm_style, BGM_STYLE_LABELS)
+    bgm_row = f"| **BGM Style** | {bgm_display} | {bgm_dist if bgm_dist else '—'} |"
     
-    # Mood distribution
-    mood_dist = format_distribution(getattr(output, 'bgm_mood_detail', None))
-    mood_row = f"| **Mood** | {output.bgm_mood} | {mood_dist if mood_dist else '—'} |"
+    # Mood distribution with readable labels
+    mood_dist = format_distribution(getattr(output, 'bgm_mood_detail', None), MOOD_LABELS)
+    mood_display = readable_label(output.bgm_mood, MOOD_LABELS)
+    mood_row = f"| **Mood** | {mood_display} | {mood_dist if mood_dist else '—'} |"
     
-    # YOLO section
+    # YOLO section with readable labels
     yolo_section = ""
     if getattr(output, 'yolo_available', False):
         yolo_env = getattr(output, 'yolo_environment', 'N/A')
         yolo_style = getattr(output, 'yolo_style', 'N/A')
+        yolo_env_display = readable_label(yolo_env, ENVIRONMENT_LABELS)
         yolo_section = f"""
 ### 🔍 Object Detection Summary
 | Metric | Value |
 |:-------|:------|
-| Environment | {yolo_env} |
+| Environment | {yolo_env_display} |
 | Activity | {yolo_style} |
 """
     
@@ -1019,8 +1421,10 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
     if not output or not output.success:
         return f"❌ {t('analysis_failed')}"
     
+    # Readable verdict with explanation
+    verdict_display = readable_label(output.verdict, AI_VERDICT_LABELS)
     verdict_emoji = {
-        "Real": "✅", "Suspicious": "⚠️", "Deepfake": "🎭",
+        "Real": "✅", "Likely Real": "✅", "Suspicious": "⚠️", "Deepfake": "🎭",
         "AIGC": "🎨", "Audio-Deepfake": "🔊",
         "Synthetic": "🤖", "AI-Generated": "🤖", "Unknown": "❓"
     }
@@ -1049,13 +1453,15 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
     def weighted_contrib(score, weight, available):
         if not available:
             return "—"
+        if score == 0 or score < 0.001:
+            return "—"
         contrib = score * weight
         return f"{contrib:.1%}"
     
     return f"""## 🤖 AI Detection Results
 
-### {emoji} Verdict: **{output.verdict}**
-### Confidence: **{output.confidence:.1%}** (weighted average)
+### {emoji} Verdict: **{verdict_display}**
+### Confidence: **{fmt_conf(output.confidence, '.1%')}** (weighted average)
 
 ---
 
@@ -1063,12 +1469,12 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
 
 | Model | Weight | Score | Contribution | Status | Description |
 |:------|:------:|:-----:|:------------:|:------:|:------------|
-| 🎭 **DeepFake-v2** | `{deepfake_w:.0%}` | {output.deepfake_score:.1%} | {weighted_contrib(output.deepfake_score, deepfake_w, output.deepfake_available)} | {'✅' if output.deepfake_available else '❌'} | *HuggingFace ViT model (92% acc), detects face swaps* |
-| 🔍 **CLIP Synthetic** | `{clip_w:.0%}` | {output.clip_synthetic_score:.1%} | {weighted_contrib(output.clip_synthetic_score, clip_w, output.clip_available)} | {'✅' if output.clip_available else '❌'} | *Zero-shot detection using CLIP embeddings* |
-| ⏱️ **CLIP-Temporal** | `{temporal_w:.0%}` | {output.temporal_score:.1%} | {weighted_contrib(output.temporal_score, temporal_w, temporal_available)} | {'✅' if temporal_available else '❌'} | *Semantic consistency between frames (CLIP-based)* |
-| 🎨 **AIGC Detector** | `{aigc_w:.0%}` | {aigc_score:.1%} | {weighted_contrib(aigc_score, aigc_w, aigc_available)} | {'✅' if aigc_available else '❌'} | *Detects Stable Diffusion, DALL-E, Midjourney* |
-| 🔊 **Audio Deepfake** | `{audio_w:.0%}` | {audio_score:.1%} | {weighted_contrib(audio_score, audio_w, audio_available)} | {'✅' if audio_available else '❌'} | *Detects voice cloning & TTS synthesis* |
-| 👤 **Face Analysis** | `{face_w:.0%}` | {output.no_face_ratio:.1%} | — | {'✅' if face_available else '❌'} | *No-face ratio analysis (>90% suspicious)* |
+| 🎭 **DeepFake-v2** | `{fmt_conf(deepfake_w)}` | {fmt_conf(output.deepfake_score, '.1%')} | {weighted_contrib(output.deepfake_score, deepfake_w, output.deepfake_available)} | {'✅' if output.deepfake_available else '❌'} | *HuggingFace ViT model (92% acc), detects face swaps* |
+| 🔍 **CLIP Synthetic** | `{fmt_conf(clip_w)}` | {fmt_conf(output.clip_synthetic_score, '.1%')} | {weighted_contrib(output.clip_synthetic_score, clip_w, output.clip_available)} | {'✅' if output.clip_available else '❌'} | *Zero-shot detection using CLIP embeddings* |
+| ⏱️ **CLIP-Temporal** | `{fmt_conf(temporal_w)}` | {fmt_conf(output.temporal_score, '.1%')} | {weighted_contrib(output.temporal_score, temporal_w, temporal_available)} | {'✅' if temporal_available else '❌'} | *Semantic consistency between frames (CLIP-based)* |
+| 🎨 **AIGC Detector** | `{fmt_conf(aigc_w)}` | {fmt_conf(aigc_score, '.1%')} | {weighted_contrib(aigc_score, aigc_w, aigc_available)} | {'✅' if aigc_available else '❌'} | *Detects Stable Diffusion, DALL-E, Midjourney* |
+| 🔊 **Audio Deepfake** | `{fmt_conf(audio_w)}` | {fmt_conf(audio_score, '.1%')} | {weighted_contrib(audio_score, audio_w, audio_available)} | {'✅' if audio_available else '❌'} | *Detects voice cloning & TTS synthesis* |
+| 👤 **Face Analysis** | `{fmt_conf(face_w)}` | {fmt_conf(output.no_face_ratio, '.1%')} | — | {'✅' if face_available else '❌'} | *No-face ratio analysis (>90% suspicious)* |
 
 ---
 
@@ -1078,7 +1484,7 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
 |:-------|:-----:|:------------|
 | **Faces Detected** | {output.faces_detected} | Total faces found across all frames |
 | **Frames with Faces** | {output.frames_with_faces}/{output.frames_analyzed} | Ratio of frames containing faces |
-| **No-Face Ratio** | {output.no_face_ratio:.1%} | Higher = more suspicious for face videos |
+| **No-Face Ratio** | {fmt_conf(output.no_face_ratio, '.1%')} | Higher = more suspicious for face videos |
 | **Temporal Anomalies** | {output.temporal_anomalies} | Sudden changes in frame consistency |
 
 ---
