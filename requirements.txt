@@ -23,8 +23,8 @@ transformers>=4.40.0
 scenedetect[opencv]>=0.6.0
 timm>=0.9.0
 
-# YOLO11
-ultralytics>=8.3.0
+# YOLO26 (Jan 2026) - https://huggingface.co/collections/merve/yolo26-models
+ultralytics>=8.4.0
 
 # Audio Analysis
 librosa>=0.10.0

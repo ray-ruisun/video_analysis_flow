@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-YOLO object detection module (SOTA: YOLO11)
+YOLO object detection module (SOTA: YOLO26)
 
-升级自 YOLOv8 → YOLO11 (Ultralytics 最新版本)
+升级自 YOLO11 → YOLO26 (Ultralytics 2026 最新版本)
+Reference: https://huggingface.co/collections/merve/yolo26-models
 
-YOLO11 优势:
-- 更高精度: mAP 提升 ~2-3%
-- 更快速度: 推理速度提升 ~10-20%
-- 更小模型: 参数量减少 ~22%
-- 支持更多任务: 检测、分割、姿态、OBB、分类
+YOLO26 优势:
+- 最新架构: 2026年1月发布
+- 更高精度: 相比YOLO11进一步提升
+- 支持零样本检测 (YOLOE26)
+- 支持多种任务: 检测、分割、姿态、OBB、分类
 
 模型选择:
-- yolo11n.pt: 最快 (2.6M 参数)
-- yolo11s.pt: 平衡 (9.4M 参数)
-- yolo11m.pt: 中等 (20.1M 参数)
-- yolo11l.pt: 大型 (25.3M 参数)
-- yolo11x.pt: 最强 (56.9M 参数)
+- yolo26n.pt: 最快 (nano)
+- yolo26s.pt: 平衡 (small) - 推荐
+- yolo26m.pt: 中等 (medium)
+- yolo26l.pt: 大型 (large)
+- yolo26x.pt: 最强 (extra large)
 """
 
 from collections import Counter
@@ -41,13 +42,14 @@ import numpy as np
 # 模型配置
 # ============================================================================
 
-# 默认使用 YOLO11s (平衡精度和速度)
-DEFAULT_MODEL = "yolo11s.pt"
+# 默认使用 YOLO26s (平衡精度和速度)
+DEFAULT_MODEL = "yolo26s.pt"
 # 备选模型:
-# "yolo11n.pt"  - 最快，适合实时处理
-# "yolo11m.pt"  - 更高精度
-# "yolo11l.pt"  - 高精度
-# "yolo11x.pt"  - 最高精度
+# "yolo26n.pt"  - 最快，适合实时处理
+# "yolo26s.pt"  - 平衡 (推荐)
+# "yolo26m.pt"  - 更高精度
+# "yolo26l.pt"  - 高精度
+# "yolo26x.pt"  - 最高精度
 
 # 全局模型缓存
 _YOLO_MODEL = None
@@ -95,7 +97,7 @@ def detect_objects_in_frames(
     
     Args:
         frames: List of video frames (BGR format)
-        model_name: YOLOv8 model name (yolov8n, yolov8s, yolov8m, etc.)
+        model_name: YOLO model name (yolo26n, yolo26s, yolo26m, etc.)
         target_objects: Set of object names to track (None = all kitchen objects)
         sample_rate: Process every Nth frame (default: 3)
         
@@ -301,7 +303,7 @@ def analyze_object_colors(frames, detection_results, color_samples=5):
         raise ValueError("Invalid detection results for color analysis")
     
     try:
-        model = YOLO(detection_results.get("model", "yolov8n.pt"))
+        model = YOLO(detection_results.get("model", "yolo26s.pt"))
         
         # Sample frames
         sampled_frames = frames[::max(1, len(frames) // color_samples)][:color_samples]
@@ -448,7 +450,7 @@ def analyze_object_materials(frames, detection_results, material_samples=5):
         raise ValueError("Invalid detection results for material analysis")
     
     try:
-        model = YOLO(detection_results.get("model", "yolov8n.pt"))
+        model = YOLO(detection_results.get("model", "yolo26s.pt"))
         
         # Sample frames
         sampled_frames = frames[::max(1, len(frames) // material_samples)][:material_samples]
@@ -550,7 +552,7 @@ def hue_to_color_name(hue):
         return "Purple/Magenta"
 
 
-def extract_full_yolo_metrics(frames, model_name="yolo11s.pt", 
+def extract_full_yolo_metrics(frames, model_name="yolo26s.pt", 
                               enable_colors=True, enable_materials=True,
                               confidence_threshold=0.25):
     """

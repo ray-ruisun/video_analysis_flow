@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Video Style Analysis - Gradio Web Interface
-SOTA Models: CLIP | CLAP | HuBERT | Whisper | YOLO11 | Deep-Fake-Detector-v2
+SOTA Models: CLIP | CLAP | HuBERT | Whisper | YOLO26 | Deep-Fake-Detector-v2
 """
 
 import sys
@@ -36,7 +36,7 @@ TRANSLATIONS = {
     "en": {
         "title": "🎬 Video Style Analysis",
         "subtitle": "SOTA 2025/2026 | PyTorch + HuggingFace",
-        "models": "CLIP · CLAP · HuBERT · Whisper · YOLO11 · DeepFake-v2",
+        "models": "CLIP · CLAP · HuBERT · Whisper · YOLO26 · DeepFake-v2",
         "upload_section": "📤 Upload",
         "settings_section": "⚙️ Settings",
         "preview_section": "🎬 Preview",
@@ -138,7 +138,7 @@ TRANSLATIONS = {
     "zh": {
         "title": "🎬 视频风格分析系统",
         "subtitle": "SOTA 2025/2026 | PyTorch + HuggingFace",
-        "models": "CLIP · CLAP · HuBERT · Whisper · YOLO11 · DeepFake-v2",
+        "models": "CLIP · CLAP · HuBERT · Whisper · YOLO26 · DeepFake-v2",
         "upload_section": "📤 上传",
         "settings_section": "⚙️ 设置",
         "preview_section": "🎬 预览",
@@ -652,7 +652,7 @@ def format_yolo(output: YOLOOutput) -> str:
 {materials_section}
 
 ---
-*Detection powered by YOLO11 (ultralytics)*
+*Detection powered by YOLO26 (ultralytics)*
 """
 
 
@@ -1862,7 +1862,7 @@ def create_ui():
                         gr.Markdown("#### 🔍 YOLO Object Detection")
                         gr.Markdown("*n=fastest, l=most accurate*")
                         cfg_yolo_model = gr.Dropdown(
-                            choices=["yolo11n.pt", "yolo11s.pt", "yolo11m.pt", "yolo11l.pt"],
+                            choices=["yolo26n.pt", "yolo26s.pt", "yolo26m.pt", "yolo26l.pt", "yolo26x.pt"],
                             value=cfg.yolo.model_name,
                             label="YOLO Model"
                         )

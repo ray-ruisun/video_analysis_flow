@@ -105,9 +105,9 @@ class ASRConfig:
 
 @dataclass
 class YOLOConfig:
-    """YOLO object detection hyperparameters"""
-    # Model
-    model_name: str = "yolo11s.pt"  # Options: yolo11n.pt, yolo11s.pt, yolo11m.pt, yolo11l.pt
+    """YOLO object detection hyperparameters (SOTA: YOLO26)"""
+    # Model - YOLO26 (Jan 2026): https://huggingface.co/collections/merve/yolo26-models
+    model_name: str = "yolo26s.pt"  # Options: yolo26n.pt, yolo26s.pt, yolo26m.pt, yolo26l.pt, yolo26x.pt
     
     # Detection
     target_frames: int = 36  # Frames to analyze
