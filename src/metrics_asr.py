@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Automatic Speech Recognition (ASR) module (PyTorch + HuggingFace 版本)
+Automatic Speech Recognition (ASR) module (SOTA PyTorch + HuggingFace 版本)
 
-使用纯 PyTorch 生态系统:
-- faster-whisper: 高效的 Whisper 实现 (CTranslate2)
+使用最先进的模型:
+- Whisper large-v3-turbo: 最新最强的多语言ASR
+- Emotion2Vec / HuBERT: 语音情感识别
 - librosa: 韵律分析 (pitch, intensity)
-- transformers: HuggingFace 情感分析模型
 
-分析内容:
-- 语音转录: Whisper
-- 语速分析: 每秒/每分钟词数
-- 口头禅检测: n-gram 频率分析
-- 停顿分析: 基于转录片段间隔
-- 韵律分析: 基于 librosa (pitch, intensity)
-- 情感分析: HuggingFace 音频情感模型
+Whisper 升级:
+- small → large-v3-turbo (更准确，支持更多语言)
+- faster-whisper 实现 (CTranslate2 加速)
+
+情感识别升级:
+- wav2vec2 → Emotion2Vec+ / HuBERT-large
 """
 
 import os
 import re
 from collections import Counter
 from pathlib import Path
+from typing import Dict, Any, List, Optional
 
 import numpy as np
 from loguru import logger
@@ -62,14 +62,19 @@ except ImportError:
     LIBROSA_AVAILABLE = False
     logger.warning("librosa not available for prosody analysis.")
 
-# Emotion analysis - HuggingFace transformers (optional)
+# Emotion analysis - HuggingFace transformers
+import torch
 EMOTION_AVAILABLE = False
 _EMOTION_CLASSIFIER = None
-_EMOTION_FEATURE_EXTRACTOR = None
+_EMOTION_PROCESSOR = None
 
 try:
-    import torch
-    from transformers import AutoModelForAudioClassification, AutoFeatureExtractor
+    from transformers import (
+        AutoModelForAudioClassification, 
+        AutoFeatureExtractor,
+        Wav2Vec2FeatureExtractor,
+        HubertForSequenceClassification
+    )
     EMOTION_AVAILABLE = True
 except ImportError:
     logger.warning("transformers not available for emotion analysis.")
@@ -78,27 +83,45 @@ except ImportError:
 # 缓存目录
 CACHE_DIR = Path.home() / ".cache" / "video_style_pipeline"
 
-# HuggingFace 情感分析模型
-# 使用 wav2vec2 情感识别模型
-EMOTION_MODEL = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
-# 备选模型:
-# "superb/wav2vec2-base-superb-er"  # SUPERB 情感识别
-# "facebook/wav2vec2-large-xlsr-53"  # 需要 fine-tune
+# ============================================================================
+# 模型配置
+# ============================================================================
+
+# Whisper 模型 (推荐 large-v3-turbo)
+DEFAULT_WHISPER_MODEL = "large-v3-turbo"
+# 备选: "large-v3", "medium", "small", "base", "tiny"
+
+# 语音情感识别模型 (SOTA)
+# 选项1: superb/hubert-large-superb-er (HuBERT-large on SUPERB)
+# 选项2: ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition
+# 选项3: facebook/hubert-large-ls960-ft (需要 fine-tune)
+EMOTION_MODEL = "superb/hubert-large-superb-er"
+# 备选更强模型:
+# "speechbrain/emotion-recognition-wav2vec2-IEMOCAP" (如果安装了 speechbrain)
+
+# 情感标签映射 (根据模型)
+EMOTION_LABELS = {
+    "superb/hubert-large-superb-er": ["angry", "happy", "neutral", "sad"],
+    "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition": [
+        "angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"
+    ]
+}
 
 
 def _load_emotion_classifier():
-    """Lazy-load HuggingFace emotion recognition model."""
-    global _EMOTION_CLASSIFIER, _EMOTION_FEATURE_EXTRACTOR
+    """Lazy-load emotion recognition model from HuggingFace."""
+    global _EMOTION_CLASSIFIER, _EMOTION_PROCESSOR
     
     if not EMOTION_AVAILABLE:
         return None, None
     
     if _EMOTION_CLASSIFIER is not None:
-        return _EMOTION_CLASSIFIER, _EMOTION_FEATURE_EXTRACTOR
+        return _EMOTION_CLASSIFIER, _EMOTION_PROCESSOR
     
     try:
-        logger.info(f"Loading HuggingFace emotion model: {EMOTION_MODEL}")
-        _EMOTION_FEATURE_EXTRACTOR = AutoFeatureExtractor.from_pretrained(
+        logger.info(f"Loading emotion model: {EMOTION_MODEL}")
+        
+        _EMOTION_PROCESSOR = AutoFeatureExtractor.from_pretrained(
             EMOTION_MODEL,
             cache_dir=str(CACHE_DIR / "hf_models")
         )
@@ -106,22 +129,32 @@ def _load_emotion_classifier():
             EMOTION_MODEL,
             cache_dir=str(CACHE_DIR / "hf_models")
         )
+        
+        # 使用 GPU 如果可用
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        _EMOTION_CLASSIFIER = _EMOTION_CLASSIFIER.to(device)
         _EMOTION_CLASSIFIER.eval()
-        logger.info("Emotion classifier loaded successfully")
-        return _EMOTION_CLASSIFIER, _EMOTION_FEATURE_EXTRACTOR
+        
+        logger.info(f"Emotion model loaded successfully on {device}")
+        return _EMOTION_CLASSIFIER, _EMOTION_PROCESSOR
+        
     except Exception as e:
         logger.warning(f"Failed to load emotion classifier: {e}")
         return None, None
 
 
-def transcribe_audio(audio_path, language="en", model_size="small"):
+def transcribe_audio(
+    audio_path: str,
+    language: str = "en",
+    model_size: str = DEFAULT_WHISPER_MODEL
+) -> Dict[str, Any]:
     """
     Transcribe audio using Whisper.
     
     Args:
         audio_path: Path to audio file
-        language: Language code (default: "en")
-        model_size: Model size ("tiny", "base", "small", "medium", "large")
+        language: Language code (default: "en", use "auto" for auto-detect)
+        model_size: Model size ("tiny", "base", "small", "medium", "large-v3", "large-v3-turbo")
         
     Returns:
         dict: Transcription results with text, timing, and metadata
@@ -135,11 +168,24 @@ def transcribe_audio(audio_path, language="en", model_size="small"):
     try:
         transcribed_text = ""
         segments_list = []
+        detected_language = language
         
         if ASR_IMPLEMENTATION == "faster-whisper":
-            logger.debug(f"Using faster-whisper for transcription: {audio_path}")
-            model = WhisperModel(model_size, device="cpu", compute_type="int8")
-            segments, info = model.transcribe(audio_path, language=language, vad_filter=True)
+            logger.debug(f"Using faster-whisper ({model_size}) for transcription: {audio_path}")
+            
+            # 使用 GPU 如果可用
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            compute_type = "float16" if device == "cuda" else "int8"
+            
+            model = WhisperModel(model_size, device=device, compute_type=compute_type)
+            
+            # 自动语言检测
+            if language == "auto":
+                segments, info = model.transcribe(audio_path, vad_filter=True)
+                detected_language = info.language
+            else:
+                segments, info = model.transcribe(audio_path, language=language, vad_filter=True)
+                detected_language = language
             
             for segment in segments:
                 text = segment.text.strip()
@@ -147,33 +193,52 @@ def transcribe_audio(audio_path, language="en", model_size="small"):
                 segments_list.append({
                     "start": segment.start,
                     "end": segment.end,
-                    "text": text
+                    "text": text,
+                    "confidence": getattr(segment, 'avg_logprob', None)
                 })
         
         else:  # openai-whisper
-            logger.debug(f"Using openai-whisper for transcription: {audio_path}")
+            logger.debug(f"Using openai-whisper ({model_size}) for transcription: {audio_path}")
             model = whisper.load_model(model_size)
-            result = model.transcribe(audio_path, language=language)
+            
+            if language == "auto":
+                result = model.transcribe(audio_path)
+            else:
+                result = model.transcribe(audio_path, language=language)
+            
             transcribed_text = result.get("text", "")
+            detected_language = result.get("language", language)
             
             if "segments" in result:
                 for seg in result["segments"]:
                     segments_list.append({
                         "start": seg.get("start", 0),
                         "end": seg.get("end", 0),
-                        "text": seg.get("text", "").strip()
+                        "text": seg.get("text", "").strip(),
+                        "confidence": seg.get("avg_logprob")
                     })
         
         if not transcribed_text.strip():
             logger.warning(f"No transcription obtained from {audio_path}")
-            raise ValueError(f"No transcription obtained from {audio_path}")
+            return {
+                "implementation": ASR_IMPLEMENTATION,
+                "model_size": model_size,
+                "text": "",
+                "segments": [],
+                "language": detected_language,
+                "word_count": 0
+            }
         
-        logger.info(f"Transcription completed: {len(transcribed_text.split())} words")
+        word_count = len(transcribed_text.split())
+        logger.info(f"Transcription completed: {word_count} words, language={detected_language}")
         
         return {
             "implementation": ASR_IMPLEMENTATION,
+            "model_size": model_size,
             "text": transcribed_text.strip(),
-            "segments": segments_list
+            "segments": segments_list,
+            "language": detected_language,
+            "word_count": word_count
         }
         
     except Exception as e:
@@ -181,7 +246,10 @@ def transcribe_audio(audio_path, language="en", model_size="small"):
         raise
 
 
-def analyze_speech_rate(transcription_result, audio_path):
+def analyze_speech_rate(
+    transcription_result: Dict[str, Any],
+    audio_path: str
+) -> Dict[str, Any]:
     """Calculate speech rate (words per second)."""
     if not transcription_result or "text" not in transcription_result:
         raise ValueError("Invalid transcription result")
@@ -191,7 +259,13 @@ def analyze_speech_rate(transcription_result, audio_path):
     num_words = len(words)
     
     if num_words == 0:
-        raise ValueError("No words found in transcription")
+        return {
+            "num_words": 0,
+            "duration": 0,
+            "words_per_second": 0,
+            "words_per_minute": 0,
+            "pace": "No speech"
+        }
     
     if not os.path.exists(audio_path):
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
@@ -208,6 +282,7 @@ def analyze_speech_rate(transcription_result, audio_path):
     words_per_second = num_words / duration
     words_per_minute = words_per_second * 60
     
+    # 语速分类
     if words_per_second < 1.5:
         pace = "Slow/Deliberate"
     elif words_per_second < 2.5:
@@ -226,7 +301,11 @@ def analyze_speech_rate(transcription_result, audio_path):
     }
 
 
-def extract_catchphrases(transcription_result, min_frequency=2, topk=5):
+def extract_catchphrases(
+    transcription_result: Dict[str, Any],
+    min_frequency: int = 2,
+    topk: int = 5
+) -> Dict[str, Any]:
     """Extract repeated phrases (n-grams) as potential catchphrases."""
     if not transcription_result or "text" not in transcription_result:
         raise ValueError("Invalid transcription result")
@@ -245,7 +324,7 @@ def extract_catchphrases(transcription_result, min_frequency=2, topk=5):
     bigrams = [tuple(words[i:i+2]) for i in range(len(words) - 1)]
     bigram_counts = Counter(bigrams)
     top_bigrams = [
-        " ".join(phrase) 
+        {"phrase": " ".join(phrase), "count": count}
         for phrase, count in bigram_counts.most_common(topk * 2)
         if count >= min_frequency
     ][:topk]
@@ -254,12 +333,14 @@ def extract_catchphrases(transcription_result, min_frequency=2, topk=5):
     trigrams = [tuple(words[i:i+3]) for i in range(len(words) - 2)]
     trigram_counts = Counter(trigrams)
     top_trigrams = [
-        " ".join(phrase)
+        {"phrase": " ".join(phrase), "count": count}
         for phrase, count in trigram_counts.most_common(topk * 2)
         if count >= min_frequency
     ][:topk]
     
-    all_catchphrases = list(set(top_bigrams + top_trigrams))
+    all_catchphrases = list(set(
+        [b["phrase"] for b in top_bigrams] + [t["phrase"] for t in top_trigrams]
+    ))
     
     return {
         "bigrams": top_bigrams,
@@ -268,7 +349,10 @@ def extract_catchphrases(transcription_result, min_frequency=2, topk=5):
     }
 
 
-def analyze_speech_pauses(transcription_result, min_pause=0.5):
+def analyze_speech_pauses(
+    transcription_result: Dict[str, Any],
+    min_pause: float = 0.5
+) -> Dict[str, Any]:
     """Analyze pause patterns in speech."""
     if not transcription_result or "segments" not in transcription_result:
         raise ValueError("Invalid transcription result (missing segments)")
@@ -280,6 +364,7 @@ def analyze_speech_pauses(transcription_result, min_pause=0.5):
             "num_pauses": 0,
             "mean_pause": 0,
             "max_pause": 0,
+            "pause_distribution": [],
             "style": "Continuous speech"
         }
     
@@ -287,25 +372,32 @@ def analyze_speech_pauses(transcription_result, min_pause=0.5):
     for i in range(len(segments) - 1):
         gap = segments[i + 1]["start"] - segments[i]["end"]
         if gap >= min_pause:
-            pauses.append(gap)
+            pauses.append({
+                "start": segments[i]["end"],
+                "duration": gap
+            })
     
     if pauses:
+        pause_durations = [p["duration"] for p in pauses]
         return {
             "num_pauses": len(pauses),
-            "mean_pause": float(sum(pauses) / len(pauses)),
-            "max_pause": float(max(pauses)),
-            "style": "Frequent pauses" if len(pauses) > len(segments) * 0.3 else "Continuous speech"
+            "mean_pause": float(sum(pause_durations) / len(pause_durations)),
+            "max_pause": float(max(pause_durations)),
+            "min_pause": float(min(pause_durations)),
+            "pause_distribution": pauses[:10],  # Top 10 pauses
+            "style": "Frequent pauses" if len(pauses) > len(segments) * 0.3 else "Fluent speech"
         }
     else:
         return {
             "num_pauses": 0,
             "mean_pause": 0,
             "max_pause": 0,
+            "pause_distribution": [],
             "style": "Continuous speech"
         }
 
 
-def analyze_prosody(audio_path):
+def analyze_prosody(audio_path: str) -> Dict[str, Any]:
     """
     Analyze speech prosody using librosa.
     
@@ -338,9 +430,11 @@ def analyze_prosody(audio_path):
             logger.warning("No pitch values extracted")
             mean_pitch = 0.0
             pitch_std = 0.0
+            pitch_range = 0.0
         else:
             mean_pitch = float(np.mean(pitch_values))
             pitch_std = float(np.std(pitch_values))
+            pitch_range = float(np.max(pitch_values) - np.min(pitch_values))
         
         # Intensity (RMS energy)
         rms = librosa.feature.rms(y=y)[0]
@@ -369,6 +463,7 @@ def analyze_prosody(audio_path):
         return {
             "mean_pitch_hz": mean_pitch,
             "pitch_std": pitch_std,
+            "pitch_range": pitch_range,
             "mean_intensity_db": mean_intensity,
             "intensity_std": intensity_std,
             "tone": tone,
@@ -382,24 +477,31 @@ def analyze_prosody(audio_path):
         raise
 
 
-def analyze_emotion(audio_path):
+def analyze_emotion(audio_path: str) -> Dict[str, Any]:
     """
     Analyze speech emotion using HuggingFace model.
     
-    使用 wav2vec2 情感识别模型。
+    使用 HuBERT-large 或 Wav2Vec2 情感识别模型。
     """
     if not os.path.exists(audio_path):
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
     
-    model, feature_extractor = _load_emotion_classifier()
+    model, processor = _load_emotion_classifier()
     
     if model is None:
-        raise ImportError("Emotion classifier not available.")
+        return {
+            "dominant_emotion": "Unknown",
+            "emotion_scores": {},
+            "confidence": 0.0,
+            "method": "N/A"
+        }
+    
+    device = next(model.parameters()).device
     
     try:
-        logger.debug(f"Running HuggingFace emotion classifier on {audio_path}")
+        logger.debug(f"Running emotion classifier on {audio_path}")
         
-        # Load audio
+        # Load audio at 16kHz (model expected rate)
         y, sr = librosa.load(audio_path, sr=16000, mono=True)
         
         # Limit length (30 seconds max)
@@ -408,19 +510,20 @@ def analyze_emotion(audio_path):
             y = y[:max_length]
         
         # Extract features
-        inputs = feature_extractor(
+        inputs = processor(
             y,
             sampling_rate=16000,
             return_tensors="pt",
             padding=True
         )
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         
         # Inference
         with torch.no_grad():
             outputs = model(**inputs)
             probs = torch.softmax(outputs.logits, dim=-1)[0]
         
-        # Get labels
+        # Get labels from model config
         id2label = model.config.id2label
         emotion_scores = {}
         for i, prob in enumerate(probs):
@@ -430,26 +533,43 @@ def analyze_emotion(audio_path):
         # Find dominant emotion
         dominant_idx = torch.argmax(probs).item()
         dominant_emotion = id2label.get(dominant_idx, "Unknown")
+        confidence = float(probs[dominant_idx])
+        
+        # Sort by score
+        sorted_scores = sorted(emotion_scores.items(), key=lambda x: x[1], reverse=True)
         
         return {
             "dominant_emotion": dominant_emotion,
-            "emotion_scores": emotion_scores,
-            "method": "HuggingFace wav2vec2"
+            "confidence": confidence,
+            "emotion_scores": dict(sorted_scores),
+            "top_3": sorted_scores[:3],
+            "method": f"HuggingFace {EMOTION_MODEL.split('/')[-1]}"
         }
         
     except Exception as e:
         logger.error(f"Emotion analysis failed: {e}")
-        raise
+        return {
+            "dominant_emotion": "Unknown",
+            "emotion_scores": {},
+            "confidence": 0.0,
+            "method": "failed",
+            "error": str(e)
+        }
 
 
-def extract_full_asr_metrics(audio_path, language="en", model_size="small", 
-                            enable_prosody=True, enable_emotion=True):
+def extract_full_asr_metrics(
+    audio_path: str,
+    language: str = "en",
+    model_size: str = DEFAULT_WHISPER_MODEL,
+    enable_prosody: bool = True,
+    enable_emotion: bool = True
+) -> Dict[str, Any]:
     """
     Extract comprehensive ASR metrics from audio.
     
     Args:
         audio_path: Path to audio file
-        language: Language code
+        language: Language code (or "auto" for auto-detect)
         model_size: Whisper model size
         enable_prosody: Enable prosody analysis
         enable_emotion: Enable emotion analysis
@@ -470,15 +590,29 @@ def extract_full_asr_metrics(audio_path, language="en", model_size="small",
     pauses = analyze_speech_pauses(transcription)
     
     result = {
+        # 基础信息
         "text": transcription.get("text", ""),
         "implementation": transcription.get("implementation", ""),
+        "model_size": transcription.get("model_size", ""),
+        "detected_language": transcription.get("language", ""),
+        
+        # 语速分析
         "num_words": speech_rate.get("num_words", 0),
         "words_per_second": speech_rate.get("words_per_second"),
         "words_per_minute": speech_rate.get("words_per_minute"),
         "pace": speech_rate.get("pace", "Unknown"),
+        
+        # 口头禅
         "catchphrases": catchphrases.get("all_catchphrases", []),
+        "catchphrase_detail": catchphrases,
+        
+        # 停顿分析
         "num_pauses": pauses.get("num_pauses", 0),
-        "pause_style": pauses.get("style", "Unknown")
+        "pause_style": pauses.get("style", "Unknown"),
+        "pause_detail": pauses,
+        
+        # 转录片段
+        "segments": transcription.get("segments", [])
     }
     
     # Prosody analysis (optional)
@@ -502,4 +636,7 @@ def extract_full_asr_metrics(audio_path, language="en", model_size="small",
             logger.warning(f"Emotion analysis failed: {e}")
     
     logger.info(f"ASR metrics extracted successfully from {audio_path}")
+    logger.info(f"  → Words: {result['num_words']} | Pace: {result['pace']} | "
+               f"Language: {result['detected_language']}")
+    
     return result

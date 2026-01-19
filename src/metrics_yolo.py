@@ -1,26 +1,57 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-YOLO object detection module.
+YOLO object detection module (SOTA: YOLO11)
 
-Detects kitchen appliances, utensils, and common objects in cooking videos.
-Analyzes object colors, materials, and characteristics.
+升级自 YOLOv8 → YOLO11 (Ultralytics 最新版本)
+
+YOLO11 优势:
+- 更高精度: mAP 提升 ~2-3%
+- 更快速度: 推理速度提升 ~10-20%
+- 更小模型: 参数量减少 ~22%
+- 支持更多任务: 检测、分割、姿态、OBB、分类
+
+模型选择:
+- yolo11n.pt: 最快 (2.6M 参数)
+- yolo11s.pt: 平衡 (9.4M 参数)
+- yolo11m.pt: 中等 (20.1M 参数)
+- yolo11l.pt: 大型 (25.3M 参数)
+- yolo11x.pt: 最强 (56.9M 参数)
 """
 
 from collections import Counter
+from typing import Dict, List, Set, Any, Optional
 from loguru import logger
 
 # Required dependency
 try:
     from ultralytics import YOLO
+    import ultralytics
+    ULTRALYTICS_VERSION = ultralytics.__version__
+    logger.debug(f"Ultralytics version: {ULTRALYTICS_VERSION}")
 except ImportError as e:
-    logger.error(f"YOLOv8 (ultralytics) not installed: {e}")
-    logger.error("Install with: pip install ultralytics")
-    raise ImportError("ultralytics is required. Install with: pip install ultralytics")
+    logger.error(f"Ultralytics not installed: {e}")
+    logger.error("Install with: pip install ultralytics>=8.3.0")
+    raise ImportError("ultralytics is required. Install with: pip install ultralytics>=8.3.0")
 
 import cv2
 import numpy as np
 
+# ============================================================================
+# 模型配置
+# ============================================================================
+
+# 默认使用 YOLO11s (平衡精度和速度)
+DEFAULT_MODEL = "yolo11s.pt"
+# 备选模型:
+# "yolo11n.pt"  - 最快，适合实时处理
+# "yolo11m.pt"  - 更高精度
+# "yolo11l.pt"  - 高精度
+# "yolo11x.pt"  - 最高精度
+
+# 全局模型缓存
+_YOLO_MODEL = None
+_CURRENT_MODEL_NAME = None
 
 # Kitchen and cooking-related objects in COCO dataset
 KITCHEN_OBJECTS = {
@@ -33,12 +64,32 @@ KITCHEN_OBJECTS = {
     "apple", "orange", "banana", "broccoli", "carrot", "pizza",
     "hot dog", "cake", "donut", "sandwich",
     # Other relevant items
-    "dining table", "chair", "vase", "clock"
+    "dining table", "chair", "vase", "clock",
+    # 人物
+    "person"
 }
 
 
-def detect_objects_in_frames(frames, model_name="yolov8n.pt", 
-                             target_objects=None, sample_rate=3):
+def _load_yolo_model(model_name: str = DEFAULT_MODEL) -> YOLO:
+    """Lazy-load YOLO model with caching."""
+    global _YOLO_MODEL, _CURRENT_MODEL_NAME
+    
+    if _YOLO_MODEL is not None and _CURRENT_MODEL_NAME == model_name:
+        return _YOLO_MODEL
+    
+    logger.info(f"Loading YOLO model: {model_name}")
+    _YOLO_MODEL = YOLO(model_name)
+    _CURRENT_MODEL_NAME = model_name
+    
+    return _YOLO_MODEL
+
+
+def detect_objects_in_frames(
+    frames: List[np.ndarray],
+    model_name: str = DEFAULT_MODEL, 
+    target_objects: Optional[Set[str]] = None,
+    sample_rate: int = 3
+) -> Dict[str, Any]:
     """
     Detect objects in sampled video frames using YOLOv8.
     
@@ -62,9 +113,8 @@ def detect_objects_in_frames(frames, model_name="yolov8n.pt",
         target_objects = KITCHEN_OBJECTS
     
     try:
-        logger.debug(f"Loading YOLO model: {model_name}")
-        # Load YOLO model
-        model = YOLO(model_name)
+        # Load YOLO model (with caching)
+        model = _load_yolo_model(model_name)
         
         # Track detection counts
         object_counts = Counter()

@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Audio metrics extraction module (PyTorch + HuggingFace 版本)
+Audio metrics extraction module (SOTA PyTorch + HuggingFace 版本)
 
-使用纯 PyTorch 生态系统，避免 TensorFlow 依赖:
+使用最先进的模型:
+- CLAP (Contrastive Language-Audio Pre-training): 音频分类、BGM风格、情绪
 - librosa: 基础音频分析 (BPM, 节拍, 能量, 频谱)
-- transformers: HuggingFace 模型 (音乐分类, 情绪分析)
+- BEATs: 音频事件检测 (备选)
 
-分析内容:
-- 节奏分析: BPM, 节拍时间点, 打击乐比例
-- 能量分析: RMS 能量, 能量方差
-- 频谱分析: 质心, 平坦度, 过零率, rolloff
-- BGM 风格分类: 使用 HuggingFace 音频分类模型
-- 情绪分析: 使用 HuggingFace 音频情绪模型
+CLAP 优势:
+- 零样本音频分类能力
+- 音频-文本对比学习
+- 更强的泛化能力
+- 支持自定义音频描述
+
+模型: laion/larger_clap_music_and_speech (HuggingFace)
+备选: microsoft/BEATs (音频事件检测)
 """
 
 import os
 import numpy as np
 from loguru import logger
 from pathlib import Path
+from typing import List, Optional, Dict, Any
 
 # Required dependencies
 try:
@@ -32,190 +36,233 @@ except ImportError as e:
 
 import torch
 
-# HuggingFace transformers for audio classification (optional)
-TRANSFORMERS_AUDIO_AVAILABLE = False
-_AUDIO_CLASSIFIER = None
-_AUDIO_FEATURE_EXTRACTOR = None
-
-try:
-    from transformers import AutoModelForAudioClassification, AutoFeatureExtractor
-    TRANSFORMERS_AUDIO_AVAILABLE = True
-except ImportError:
-    logger.warning("transformers not available for audio classification.")
-    logger.warning("Install with: pip install transformers")
-
 # 缓存目录
 CACHE_DIR = Path.home() / ".cache" / "video_style_pipeline"
 
-# HuggingFace 模型配置
-# 音乐分类模型 (可选择不同模型)
-MUSIC_CLASSIFIER_MODEL = "MIT/ast-finetuned-audioset-10-10-0.4593"  # AudioSet 分类
-# 备选: "facebook/wav2vec2-base" + 自定义分类头
+# ============================================================================
+# CLAP 模型配置
+# ============================================================================
+CLAP_MODEL = "laion/larger_clap_music_and_speech"
+# 备选模型:
+# "laion/clap-htsat-unfused"  # 更快但精度略低
+# "microsoft/BEATs-iter3-AS20K"  # 音频事件检测
 
-# 情绪相关的 AudioSet 标签映射
-MOOD_LABEL_MAPPING = {
-    "happy": ["Happy music", "Exciting music", "Funny music"],
-    "sad": ["Sad music", "Tender music"],
-    "energetic": ["Electronic music", "Techno", "Dance music", "Drum and bass"],
-    "calm": ["Ambient music", "New-age music", "Meditation"],
-    "aggressive": ["Heavy metal", "Punk rock", "Grunge"],
+# 全局模型缓存
+_CLAP_MODEL = None
+_CLAP_PROCESSOR = None
+
+# ============================================================================
+# 预定义的音频描述 (用于零样本分类)
+# ============================================================================
+
+# BGM 风格描述
+BGM_STYLE_PROMPTS = [
+    "electronic music with synthesizers and beats",
+    "pop music with catchy melody",
+    "rock music with electric guitars",
+    "classical orchestral music",
+    "jazz music with saxophone and piano",
+    "ambient relaxing background music",
+    "hip hop music with rap and beats",
+    "folk acoustic guitar music",
+    "cinematic epic trailer music",
+    "lo-fi chill beats",
+    "upbeat happy commercial music",
+    "corporate background music",
+]
+
+# 情绪描述
+MOOD_PROMPTS = [
+    "happy upbeat energetic music",
+    "sad melancholic emotional music",
+    "calm peaceful relaxing music",
+    "intense dramatic exciting music",
+    "romantic soft tender music",
+    "mysterious suspenseful music",
+    "playful fun cheerful music",
+    "aggressive powerful heavy music",
+    "nostalgic sentimental music",
+    "neutral background music",
+]
+
+# 乐器检测描述
+INSTRUMENT_PROMPTS = [
+    "piano playing",
+    "guitar playing acoustic or electric",
+    "drums and percussion",
+    "violin or strings",
+    "synthesizer electronic sounds",
+    "bass guitar or bass line",
+    "vocals singing",
+    "trumpet or brass instruments",
+    "flute or woodwind instruments",
+]
+
+# 简化标签映射
+STYLE_SIMPLIFY = {
+    "electronic music with synthesizers and beats": "Electronic",
+    "pop music with catchy melody": "Pop",
+    "rock music with electric guitars": "Rock",
+    "classical orchestral music": "Classical",
+    "jazz music with saxophone and piano": "Jazz",
+    "ambient relaxing background music": "Ambient",
+    "hip hop music with rap and beats": "Hip-Hop",
+    "folk acoustic guitar music": "Folk",
+    "cinematic epic trailer music": "Cinematic",
+    "lo-fi chill beats": "Lo-Fi",
+    "upbeat happy commercial music": "Commercial/Upbeat",
+    "corporate background music": "Corporate",
 }
 
-# BGM 风格标签映射
-GENRE_LABEL_MAPPING = {
-    "Electronic": ["Electronic music", "Techno", "House music", "Trance music", "Drum and bass", "Dubstep"],
-    "Pop": ["Pop music", "Dance music", "Disco"],
-    "Rock": ["Rock music", "Heavy metal", "Punk rock", "Grunge", "Progressive rock"],
-    "Classical": ["Classical music", "Orchestra", "Piano", "Violin"],
-    "Jazz": ["Jazz", "Blues", "Soul music", "Funk"],
-    "Ambient": ["Ambient music", "New-age music", "Drone"],
-    "Hip-Hop": ["Hip hop music", "Rap", "Beatboxing"],
-    "Folk": ["Folk music", "Country", "Bluegrass"],
+MOOD_SIMPLIFY = {
+    "happy upbeat energetic music": "Happy/Energetic",
+    "sad melancholic emotional music": "Sad/Melancholic",
+    "calm peaceful relaxing music": "Calm/Relaxing",
+    "intense dramatic exciting music": "Intense/Dramatic",
+    "romantic soft tender music": "Romantic",
+    "mysterious suspenseful music": "Mysterious",
+    "playful fun cheerful music": "Playful",
+    "aggressive powerful heavy music": "Aggressive",
+    "nostalgic sentimental music": "Nostalgic",
+    "neutral background music": "Neutral",
 }
 
 
-def _load_audio_classifier():
-    """Lazy-load HuggingFace audio classification model."""
-    global _AUDIO_CLASSIFIER, _AUDIO_FEATURE_EXTRACTOR
+def _load_clap_model():
+    """Lazy-load CLAP model from HuggingFace."""
+    global _CLAP_MODEL, _CLAP_PROCESSOR
     
-    if not TRANSFORMERS_AUDIO_AVAILABLE:
-        return None, None
-    
-    if _AUDIO_CLASSIFIER is not None:
-        return _AUDIO_CLASSIFIER, _AUDIO_FEATURE_EXTRACTOR
+    if _CLAP_MODEL is not None:
+        return _CLAP_MODEL, _CLAP_PROCESSOR
     
     try:
-        logger.info(f"Loading HuggingFace audio classifier: {MUSIC_CLASSIFIER_MODEL}")
-        _AUDIO_FEATURE_EXTRACTOR = AutoFeatureExtractor.from_pretrained(
-            MUSIC_CLASSIFIER_MODEL,
+        from transformers import ClapProcessor, ClapModel
+        
+        logger.info(f"Loading CLAP model: {CLAP_MODEL}")
+        
+        _CLAP_PROCESSOR = ClapProcessor.from_pretrained(
+            CLAP_MODEL,
             cache_dir=str(CACHE_DIR / "hf_models")
         )
-        _AUDIO_CLASSIFIER = AutoModelForAudioClassification.from_pretrained(
-            MUSIC_CLASSIFIER_MODEL,
+        _CLAP_MODEL = ClapModel.from_pretrained(
+            CLAP_MODEL,
             cache_dir=str(CACHE_DIR / "hf_models")
         )
-        _AUDIO_CLASSIFIER.eval()
-        logger.info("Audio classifier loaded successfully")
-        return _AUDIO_CLASSIFIER, _AUDIO_FEATURE_EXTRACTOR
+        
+        # 使用 GPU 如果可用
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        _CLAP_MODEL = _CLAP_MODEL.to(device)
+        _CLAP_MODEL.eval()
+        
+        logger.info(f"CLAP model loaded successfully on {device}")
+        return _CLAP_MODEL, _CLAP_PROCESSOR
+        
+    except ImportError:
+        logger.warning("transformers not available for CLAP audio classification.")
+        return None, None
     except Exception as e:
-        logger.warning(f"Failed to load audio classifier: {e}")
+        logger.warning(f"Failed to load CLAP model: {e}")
         return None, None
 
 
-def classify_audio_with_hf(y: np.ndarray, sr: int) -> dict:
+def classify_audio_with_clap(
+    y: np.ndarray,
+    sr: int,
+    prompts: List[str],
+    label_mapping: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
     """
-    使用 HuggingFace 模型分类音频
+    使用 CLAP 进行零样本音频分类
     
     Args:
         y: 音频波形
         sr: 采样率
+        prompts: 文本提示列表
+        label_mapping: 可选的标签简化映射
         
     Returns:
-        dict: 分类结果 (genre, mood, top_labels)
+        dict: 分类结果
     """
-    model, feature_extractor = _load_audio_classifier()
+    model, processor = _load_clap_model()
     
     if model is None:
         return {
-            "genre": "Unknown",
-            "mood": "Unknown",
-            "top_labels": [],
+            "best_match": "Unknown",
+            "confidence": 0.0,
+            "all_scores": {},
             "method": "N/A"
         }
     
+    device = next(model.parameters()).device
+    
     try:
-        # 重采样到模型期望的采样率 (通常 16kHz)
-        target_sr = feature_extractor.sampling_rate
-        if sr != target_sr:
-            y = librosa.resample(y, orig_sr=sr, target_sr=target_sr)
+        # 重采样到 48kHz (CLAP 期望的采样率)
+        if sr != 48000:
+            y = librosa.resample(y, orig_sr=sr, target_sr=48000)
+            sr = 48000
         
-        # 截取或填充到合适长度 (10秒)
-        max_length = target_sr * 10
+        # 截取到合适长度 (10秒)
+        max_length = sr * 10
         if len(y) > max_length:
             # 取中间部分
             start = (len(y) - max_length) // 2
             y = y[start:start + max_length]
-        elif len(y) < max_length:
-            y = np.pad(y, (0, max_length - len(y)))
         
-        # 提取特征
-        inputs = feature_extractor(
-            y,
-            sampling_rate=target_sr,
-            return_tensors="pt"
+        # 处理输入
+        inputs = processor(
+            text=prompts,
+            audios=y,
+            sampling_rate=sr,
+            return_tensors="pt",
+            padding=True
         )
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         
         # 推理
         with torch.no_grad():
             outputs = model(**inputs)
-            probs = torch.softmax(outputs.logits, dim=-1)[0]
+            logits_per_audio = outputs.logits_per_audio
+            probs = logits_per_audio.softmax(dim=-1)[0]
         
-        # 获取标签
-        id2label = model.config.id2label
-        top_k = 10
-        top_probs, top_indices = torch.topk(probs, k=min(top_k, len(probs)))
+        # 获取结果
+        best_idx = torch.argmax(probs).item()
+        best_prompt = prompts[best_idx]
+        best_label = label_mapping.get(best_prompt, best_prompt) if label_mapping else best_prompt
         
-        top_labels = []
-        for prob, idx in zip(top_probs, top_indices):
-            label = id2label.get(idx.item(), f"label_{idx.item()}")
-            top_labels.append({"label": label, "probability": float(prob)})
+        all_scores = {}
+        for i, prompt in enumerate(prompts):
+            label = label_mapping.get(prompt, prompt) if label_mapping else prompt
+            all_scores[label] = float(probs[i].item())
         
-        # 映射到 genre 和 mood
-        genre = _map_to_genre(top_labels)
-        mood = _map_to_mood(top_labels)
+        # 排序并获取 top-k
+        sorted_scores = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)
         
         return {
-            "genre": genre,
-            "mood": mood,
-            "top_labels": top_labels,
-            "method": "HuggingFace AST"
+            "best_match": best_label,
+            "confidence": float(probs[best_idx].item()),
+            "all_scores": dict(sorted_scores),
+            "top_3": sorted_scores[:3],
+            "method": "CLAP"
         }
         
     except Exception as e:
-        logger.warning(f"HuggingFace audio classification failed: {e}")
+        logger.warning(f"CLAP classification failed: {e}")
         return {
-            "genre": "Unknown",
-            "mood": "Unknown",
-            "top_labels": [],
+            "best_match": "Unknown",
+            "confidence": 0.0,
+            "all_scores": {},
             "method": "failed"
         }
 
 
-def _map_to_genre(top_labels: list) -> str:
-    """将 AudioSet 标签映射到音乐风格"""
-    label_names = [item["label"] for item in top_labels[:5]]
-    
-    for genre, keywords in GENRE_LABEL_MAPPING.items():
-        for keyword in keywords:
-            if any(keyword.lower() in label.lower() for label in label_names):
-                return genre
-    
-    # 如果没有匹配，返回最高概率的标签
-    if top_labels:
-        return top_labels[0]["label"]
-    return "Unknown"
-
-
-def _map_to_mood(top_labels: list) -> str:
-    """将 AudioSet 标签映射到情绪"""
-    label_names = [item["label"] for item in top_labels[:5]]
-    
-    for mood, keywords in MOOD_LABEL_MAPPING.items():
-        for keyword in keywords:
-            if any(keyword.lower() in label.lower() for label in label_names):
-                return mood.capitalize()
-    
-    return "Neutral"
-
-
-def extract_audio_metrics(audio_path):
+def extract_audio_metrics(audio_path: str) -> Dict[str, Any]:
     """
-    Extract comprehensive audio metrics from a wav file.
+    Extract comprehensive audio metrics from an audio file.
     
-    使用 librosa 进行基础分析，HuggingFace 进行高级分类。
+    使用 CLAP 进行高级分类，librosa 进行基础分析。
     
     Args:
-        audio_path: Path to audio file (preferably 22.05kHz mono wav)
+        audio_path: Path to audio file
         
     Returns:
         dict: Audio metrics including tempo, beats, energy, genre, mood, etc.
@@ -284,39 +331,76 @@ def extract_audio_metrics(audio_path):
         key_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
         tonal_key = f"{key_names[key_idx]} (estimated)"
         
-        # ====== 高级分析 (HuggingFace) ======
-        hf_result = classify_audio_with_hf(y, sr)
+        # ====== 高级分析 (CLAP) ======
         
-        # 如果 HuggingFace 分析失败，使用 librosa 估算情绪
-        genre = hf_result.get("genre", "Unknown")
-        mood = hf_result.get("mood", "Unknown")
+        # BGM 风格分类
+        style_result = classify_audio_with_clap(y, sr, BGM_STYLE_PROMPTS, STYLE_SIMPLIFY)
         
-        if mood == "Unknown":
-            mood = classify_bgm_mood(float(tempo), percussive_ratio, mean_centroid, energy_variance)
+        # 情绪分类
+        mood_result = classify_audio_with_clap(y, sr, MOOD_PROMPTS, MOOD_SIMPLIFY)
+        
+        # 乐器检测
+        instrument_result = classify_audio_with_clap(y, sr, INSTRUMENT_PROMPTS)
+        detected_instruments = [
+            inst for inst, score in instrument_result.get("all_scores", {}).items()
+            if score > 0.15  # 阈值
+        ]
         
         result = {
+            # 基础节奏分析
             "tempo_bpm": float(tempo),
             "beat_times": beat_times.tolist() if hasattr(beat_times, 'tolist') else list(beat_times),
             "num_beats": len(beat_times),
             "percussive_ratio": percussive_ratio,
+            
+            # 频谱特征
             "spectral_centroid": mean_centroid,
             "spectral_flatness": mean_flatness,
             "zero_crossing_rate": mean_zcr,
+            "spectral_rolloff": mean_rolloff,
             "speech_ratio": speech_ratio,
-            "bgm_style": genre,
-            "mood": mood,
-            "mood_tags": hf_result.get("top_labels", []),
-            "instruments": {
-                "detected_instruments": [],
-                "method": hf_result.get("method", "librosa")
-            },
+            
+            # 能量分析
             "mean_energy": mean_energy,
             "energy_variance": energy_variance,
-            "spectral_rolloff": mean_rolloff,
-            "key_signature": tonal_key
+            
+            # 调式
+            "key_signature": tonal_key,
+            
+            # CLAP 分类结果 (BGM 风格)
+            "bgm_style": style_result.get("best_match", "Unknown"),
+            "bgm_style_confidence": style_result.get("confidence", 0.0),
+            "bgm_style_detail": {
+                "all_scores": style_result.get("all_scores", {}),
+                "top_3": style_result.get("top_3", []),
+                "method": style_result.get("method", "N/A")
+            },
+            
+            # CLAP 分类结果 (情绪)
+            "mood": mood_result.get("best_match", "Unknown"),
+            "mood_confidence": mood_result.get("confidence", 0.0),
+            "mood_detail": {
+                "all_scores": mood_result.get("all_scores", {}),
+                "top_3": mood_result.get("top_3", []),
+                "method": mood_result.get("method", "N/A")
+            },
+            
+            # 乐器检测
+            "instruments": {
+                "detected_instruments": detected_instruments,
+                "instrument_scores": instrument_result.get("all_scores", {}),
+                "method": instrument_result.get("method", "N/A")
+            },
+            
+            # 兼容旧接口
+            "mood_tags": mood_result.get("top_3", []),
         }
         
         logger.info(f"Audio metrics extracted successfully from {audio_path}")
+        logger.info(f"  → BGM: {result['bgm_style']} ({result['bgm_style_confidence']:.1%}) | "
+                   f"Mood: {result['mood']} ({result['mood_confidence']:.1%}) | "
+                   f"BPM: {result['tempo_bpm']:.1f}")
+        
         return result
         
     except Exception as e:
@@ -324,7 +408,12 @@ def extract_audio_metrics(audio_path):
         raise
 
 
-def calculate_beat_alignment(video_duration, num_cuts, beat_times, tolerance=0.15):
+def calculate_beat_alignment(
+    video_duration: float,
+    num_cuts: int,
+    beat_times: List[float],
+    tolerance: float = 0.15
+) -> float:
     """
     Calculate how well cuts align with musical beats.
     
@@ -366,7 +455,7 @@ def calculate_beat_alignment(video_duration, num_cuts, beat_times, tolerance=0.1
     return alignment_ratio
 
 
-def analyze_energy_dynamics(audio_path, window_sec=5.0):
+def analyze_energy_dynamics(audio_path: str, window_sec: float = 5.0) -> Dict[str, Any]:
     """
     Analyze energy dynamics over time.
     """
@@ -398,23 +487,40 @@ def analyze_energy_dynamics(audio_path, window_sec=5.0):
         raise
 
 
-def classify_bgm_mood(tempo, percussive_ratio, spectral_centroid, energy_variance):
+def get_audio_embedding(audio_path: str) -> np.ndarray:
     """
-    Classify BGM mood based on audio features (librosa fallback).
+    Get CLAP audio embedding for an audio file.
+    
+    Useful for similarity search or clustering.
+    
+    Args:
+        audio_path: Path to audio file
+        
+    Returns:
+        np.ndarray: Audio embedding vector
     """
-    if tempo < 90:
-        mood = "Calm/Relaxed"
-    elif tempo < 120:
-        mood = "Moderate/Upbeat"
-    else:
-        mood = "Energetic/Fast-paced"
+    model, processor = _load_clap_model()
     
-    if percussive_ratio > 0.5:
-        mood += " with strong rhythm"
+    if model is None:
+        raise RuntimeError("CLAP model not available")
     
-    if energy_variance > 0.015:
-        mood += ", dynamic"
-    else:
-        mood += ", consistent"
+    device = next(model.parameters()).device
     
-    return mood
+    y, sr = librosa.load(audio_path, sr=48000, mono=True)
+    
+    # 截取到合适长度
+    max_length = sr * 10
+    if len(y) > max_length:
+        start = (len(y) - max_length) // 2
+        y = y[start:start + max_length]
+    
+    inputs = processor(audios=y, sampling_rate=sr, return_tensors="pt")
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+    
+    with torch.no_grad():
+        audio_features = model.get_audio_features(**inputs)
+    
+    embedding = audio_features.cpu().numpy().squeeze()
+    embedding = embedding / np.linalg.norm(embedding)
+    
+    return embedding
