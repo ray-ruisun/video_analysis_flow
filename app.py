@@ -972,6 +972,38 @@ def select_video_from_list(index):
     return t('no_videos'), None, []
 
 
+def load_video_results(index):
+    """Load and display results for the selected video"""
+    if index is None or not STATE.videos:
+        no_result = f"*{t('upload_first')}*"
+        return no_result, None, no_result, no_result, no_result, no_result
+    
+    # Convert to int if needed
+    if isinstance(index, str):
+        try:
+            index = int(index)
+        except:
+            no_result = f"*{t('upload_first')}*"
+            return no_result, None, no_result, no_result, no_result, no_result
+    
+    if 0 <= index < len(STATE.videos):
+        STATE.current_index = index
+        video = STATE.videos[index]
+        
+        # Format results for this video
+        visual_result = format_visual(video.visual_output) if video.visual_output else f"*{t('run_analysis_first')}*"
+        contact = video.visual_output.contact_sheet if video.visual_output else None
+        audio_result = format_audio(video.audio_output) if video.audio_output else f"*{t('run_analysis_first')}*"
+        asr_result = format_asr(video.asr_output) if video.asr_output else f"*{t('run_analysis_first')}*"
+        yolo_result = format_yolo(video.yolo_output) if video.yolo_output else f"*{t('run_analysis_first')}*"
+        ai_result = format_ai_detection(video.ai_output) if video.ai_output else f"*{t('run_analysis_first')}*"
+        
+        return visual_result, contact, audio_result, asr_result, yolo_result, ai_result
+    
+    no_result = f"*{t('upload_first')}*"
+    return no_result, None, no_result, no_result, no_result, no_result
+
+
 def delete_current_video():
     """Delete the currently selected video"""
     if not STATE.videos:
@@ -1199,7 +1231,8 @@ def run_ai_detection(progress=gr.Progress()):
 def run_batch_analysis(language: str, progress=gr.Progress()):
     """Analyze all videos in the list for cross-video comparison"""
     if not STATE.videos:
-        return (f"❌ {t('no_videos')}", None, "", "", "", "", "", "", get_video_list_header(), gr.update(choices=[], value=None))
+        empty_update = gr.update(choices=[], value=None)
+        return (f"❌ {t('no_videos')}", None, "", "", "", "", "", "", get_video_list_header(), empty_update, empty_update)
     
     total_videos = len(STATE.videos)
     results = []
@@ -1214,15 +1247,19 @@ def run_batch_analysis(language: str, progress=gr.Progress()):
         progress(base_progress + 0.02, desc=f"📹 Video {i+1}/{total_videos}: Visual...")
         
         _run_visual_internal()
-        progress(base_progress + 0.04, desc=f"🎵 Video {i+1}/{total_videos}: Audio...")
+        progress(base_progress + 0.03, desc=f"🎵 Video {i+1}/{total_videos}: Audio...")
         
         _run_audio_internal()
-        progress(base_progress + 0.06, desc=f"🎤 Video {i+1}/{total_videos}: ASR...")
+        progress(base_progress + 0.05, desc=f"🎤 Video {i+1}/{total_videos}: ASR...")
         
         _run_asr_internal(language)
-        progress(base_progress + 0.08, desc=f"🔍 Video {i+1}/{total_videos}: YOLO...")
+        progress(base_progress + 0.07, desc=f"🔍 Video {i+1}/{total_videos}: YOLO...")
         
         _run_yolo_internal()
+        
+        progress(base_progress + 0.09, desc=f"🤖 Video {i+1}/{total_videos}: AI Detection...")
+        if STATE.config.ai_detection.enabled:
+            _run_ai_detection_internal()
         
         # Sync back to video list
         STATE.sync_legacy_to_current()
@@ -1252,8 +1289,9 @@ def run_batch_analysis(language: str, progress=gr.Progress()):
     contact = STATE.visual_output.contact_sheet if STATE.visual_output else None
     
     choices = get_video_list_choices()
+    radio_update = gr.update(choices=choices, value=STATE.current_index)
     return (visual_result, contact, audio_result, asr_result, yolo_result, 
-            ai_result, consensus_result, summary, get_video_list_header(), gr.update(choices=choices, value=STATE.current_index))
+            ai_result, consensus_result, summary, get_video_list_header(), radio_update, radio_update)
 
 
 def run_consensus():
@@ -1339,7 +1377,8 @@ def run_all(language: str, progress=gr.Progress()):
     summary = "\n".join(lines)
     choices = get_video_list_choices()
     
-    return visual_result, contact, audio_result, asr_result, yolo_result, ai_result, consensus_result, summary, get_video_list_header(), gr.update(choices=choices, value=STATE.current_index)
+    radio_update = gr.update(choices=choices, value=STATE.current_index)
+    return visual_result, contact, audio_result, asr_result, yolo_result, ai_result, consensus_result, summary, get_video_list_header(), radio_update, radio_update
 
 
 def gen_report(progress=gr.Progress()):
@@ -1637,6 +1676,18 @@ def create_ui():
                 
                 gr.Markdown("---")
                 
+                # Video selector for viewing results
+                gr.Markdown("### 📋 View Results For:")
+                results_video_selector = gr.Radio(
+                    choices=get_video_list_choices(),
+                    value=STATE.current_index if STATE.videos else None,
+                    label=None,
+                    interactive=True,
+                    container=False
+                )
+                
+                gr.Markdown("---")
+                
                 # Results Tabs with meaningful names
                 with gr.Tabs():
                     with gr.Tab(t('tab_visual'), id="result_visual"):
@@ -1859,6 +1910,10 @@ def create_ui():
         video_list_radio.change(fn=select_video_from_list, inputs=[video_list_radio],
                                outputs=[upload_status, audio_player, frame_gallery])
         
+        # Sync video selection between Upload tab and Analysis tab
+        results_video_selector.change(fn=load_video_results, inputs=[results_video_selector],
+                                     outputs=[visual_result, contact_img, audio_result, asr_result, yolo_result, ai_result])
+        
         delete_video_btn.click(fn=delete_current_video, inputs=[],
                               outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery])
         
@@ -1876,14 +1931,14 @@ def create_ui():
             fn=run_all,
             inputs=[language_select],
             outputs=[visual_result, contact_img, audio_result, asr_result,
-                     yolo_result, ai_result, consensus_result, summary_box, video_list_header, video_list_radio]
+                     yolo_result, ai_result, consensus_result, summary_box, video_list_header, video_list_radio, results_video_selector]
         )
         
         run_batch_btn.click(
             fn=run_batch_analysis,
             inputs=[language_select],
             outputs=[visual_result, contact_img, audio_result, asr_result,
-                     yolo_result, ai_result, consensus_result, summary_box, video_list_header, video_list_radio]
+                     yolo_result, ai_result, consensus_result, summary_box, video_list_header, video_list_radio, results_video_selector]
         )
         
         gen_report_btn.click(fn=gen_report, outputs=[report_status, report_file, pdf_file, pdf_preview])
