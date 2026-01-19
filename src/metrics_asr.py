@@ -44,13 +44,13 @@ if not ASR_AVAILABLE:
     logger.error("  pip install openai-whisper")
     raise ImportError("Whisper is required. Install faster-whisper or openai-whisper")
 
-# Prosody analysis dependency
+# Prosody analysis - 使用 librosa 替代 parselmouth
 try:
-    import parselmouth
-    PRAAT_AVAILABLE = True
+    import librosa
+    LIBROSA_AVAILABLE = True
 except ImportError:
-    PRAAT_AVAILABLE = False
-    logger.warning("Parselmouth (Praat) not available. Install for prosody analysis: pip install parselmouth")
+    LIBROSA_AVAILABLE = False
+    logger.warning("librosa not available for prosody analysis. Install with: pip install librosa")
 
 try:
     from speechbrain.pretrained import EncoderClassifier
@@ -336,7 +336,10 @@ def analyze_speech_pauses(transcription_result, min_pause=0.5):
 
 def analyze_prosody(audio_path):
     """
-    Analyze speech prosody (tone, pitch, intensity) using Praat.
+    Analyze speech prosody (tone, pitch, intensity) using librosa.
+    
+    使用 librosa.pyin 提取基频 (F0/pitch)，使用 librosa.feature.rms 提取强度。
+    这是 parselmouth/Praat 的替代方案，无需额外安装。
     
     Args:
         audio_path: Path to audio file
@@ -345,42 +348,52 @@ def analyze_prosody(audio_path):
         dict: Prosody analysis metrics
         
     Raises:
-        ImportError: If Praat (parselmouth) is not available
+        ImportError: If librosa is not available
         FileNotFoundError: If audio file not found
     """
-    if not PRAAT_AVAILABLE:
-        logger.error("Parselmouth (Praat) is required for prosody analysis")
-        logger.error("Install with: pip install parselmouth")
-        raise ImportError("Parselmouth (Praat) is required. Install with: pip install parselmouth")
+    if not LIBROSA_AVAILABLE:
+        logger.error("librosa is required for prosody analysis")
+        logger.error("Install with: pip install librosa")
+        raise ImportError("librosa is required. Install with: pip install librosa")
     
     if not os.path.exists(audio_path):
         logger.error(f"Audio file not found: {audio_path}")
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
     
     try:
-        logger.debug(f"Analyzing prosody with Praat: {audio_path}")
-        sound = parselmouth.Sound(audio_path)
+        logger.debug(f"Analyzing prosody with librosa: {audio_path}")
         
-        # Extract pitch
-        pitch = sound.to_pitch()
-        pitch_values = pitch.selected_array['frequency']
-        pitch_values = pitch_values[pitch_values > 0]  # Remove unvoiced
+        # Load audio
+        y, sr = librosa.load(audio_path, sr=22050, mono=True)
+        
+        # Extract pitch using pyin (probabilistic YIN)
+        # fmin/fmax 设置人声基频范围 (约 80-400 Hz)
+        f0, voiced_flag, voiced_probs = librosa.pyin(
+            y, 
+            fmin=librosa.note_to_hz('C2'),  # ~65 Hz
+            fmax=librosa.note_to_hz('C6'),  # ~1047 Hz
+            sr=sr
+        )
+        
+        # Filter out unvoiced frames (NaN values)
+        pitch_values = f0[~np.isnan(f0)]
         
         if len(pitch_values) == 0:
             logger.warning("No pitch values extracted")
-            mean_pitch = 0
-            pitch_std = 0
+            mean_pitch = 0.0
+            pitch_std = 0.0
         else:
             mean_pitch = float(np.mean(pitch_values))
             pitch_std = float(np.std(pitch_values))
         
-        # Extract intensity
-        intensity = sound.to_intensity()
-        intensity_values = intensity.values[0]
-        mean_intensity = float(np.mean(intensity_values))
-        intensity_std = float(np.std(intensity_values))
+        # Extract intensity (RMS energy)
+        rms = librosa.feature.rms(y=y)[0]
+        # Convert to dB scale (similar to Praat intensity)
+        rms_db = librosa.amplitude_to_db(rms, ref=np.max)
+        mean_intensity = float(np.mean(rms_db))
+        intensity_std = float(np.std(rms_db))
         
-        # Classify tone
+        # Classify tone based on mean pitch
         if mean_pitch < 150:
             tone = "Low"
         elif mean_pitch < 250:
@@ -388,7 +401,7 @@ def analyze_prosody(audio_path):
         else:
             tone = "High"
         
-        # Classify prosody style
+        # Classify prosody style based on pitch variation
         if pitch_std < 20:
             prosody_style = "Monotone"
         elif pitch_std < 50:
@@ -396,13 +409,18 @@ def analyze_prosody(audio_path):
         else:
             prosody_style = "Expressive"
         
+        # Additional metrics: voiced ratio (有声段比例)
+        voiced_ratio = float(np.sum(~np.isnan(f0))) / len(f0) if len(f0) > 0 else 0.0
+        
         return {
             "mean_pitch_hz": mean_pitch,
             "pitch_std": pitch_std,
             "mean_intensity_db": mean_intensity,
             "intensity_std": intensity_std,
             "tone": tone,
-            "prosody_style": prosody_style
+            "prosody_style": prosody_style,
+            "voiced_ratio": voiced_ratio,  # 新增：有声段比例
+            "method": "librosa.pyin"  # 标记使用的方法
         }
         
     except Exception as e:

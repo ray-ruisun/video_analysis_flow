@@ -40,8 +40,8 @@ faster-whisper>=0.9.0
 torchaudio>=2.0.0
 speechbrain>=0.5.14
 
-# ASR 韵律分析 (可选，需要 enable_prosody=True)
-# parselmouth>=0.4.0
+# ASR 韵律分析: 已使用 librosa 替代 parselmouth，无需额外安装
+# (librosa 在音频分析模块中已包含)
 
 # ============================================================================
 # 可选依赖
