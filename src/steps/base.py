@@ -182,9 +182,10 @@ class VisualOutput(StepOutput):
 @dataclass
 class AudioOutput(StepOutput):
     """
-    音频分析输出
+    音频分析输出 (CLAP 版本)
     
     包含: 节拍、BPM、BGM风格、乐器检测、情绪分析等
+    所有分类结果都包含详细分布信息
     """
     tempo_bpm: float = 0.0
     beat_times: List[float] = field(default_factory=list)
@@ -201,16 +202,28 @@ class AudioOutput(StepOutput):
     energy_variance: float = 0.0
     spectral_rolloff: float = 0.0
     
-    # 高级分析
+    # 语音特征
     speech_ratio: float = 0.0
+    
+    # CLAP 分类结果 (BGM 风格)
     bgm_style: str = "Unknown"
+    bgm_style_confidence: float = 0.0
+    bgm_style_detail: Dict[str, Any] = field(default_factory=dict)
+    
+    # CLAP 分类结果 (情绪)
     mood: str = "Unknown"
-    mood_tags: List[Dict[str, Any]] = field(default_factory=list)
+    mood_confidence: float = 0.0
+    mood_detail: Dict[str, Any] = field(default_factory=dict)
+    mood_tags: List[Any] = field(default_factory=list)
+    
+    # 乐器检测
     instruments: Dict[str, Any] = field(default_factory=dict)
+    
+    # 调式
     key_signature: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典格式"""
+        """转换为字典格式 (包含详细分布)"""
         return {
             "tempo_bpm": self.tempo_bpm,
             "beat_times": self.beat_times,
@@ -223,9 +236,16 @@ class AudioOutput(StepOutput):
             "energy_variance": self.energy_variance,
             "spectral_rolloff": self.spectral_rolloff,
             "speech_ratio": self.speech_ratio,
+            # BGM 风格 (含详细分布)
             "bgm_style": self.bgm_style,
+            "bgm_style_confidence": self.bgm_style_confidence,
+            "bgm_style_detail": self.bgm_style_detail,
+            # 情绪 (含详细分布)
             "mood": self.mood,
+            "mood_confidence": self.mood_confidence,
+            "mood_detail": self.mood_detail,
             "mood_tags": self.mood_tags,
+            # 乐器和调式
             "instruments": self.instruments,
             "key_signature": self.key_signature,
         }

@@ -115,11 +115,19 @@ print(f"报告: {output.report_path}")
 import sys
 import subprocess
 import argparse
+import json
+import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Any
 
 # 将 src 目录加入路径
 sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+# ============================================================================
+# 日志文件配置
+# ============================================================================
+LOG_FILE = None
+LOG_DATA = {"runs": [], "timestamp": None}
 
 from steps import (
     # 步骤类
@@ -284,6 +292,63 @@ def pause(message: str = "按回车继续下一步..."):
         pass
 
 
+def init_log_file(work_dir: Path) -> Path:
+    """初始化日志文件"""
+    global LOG_FILE, LOG_DATA
+    
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    LOG_FILE = work_dir / f"debug_output_{timestamp}.json"
+    LOG_DATA = {
+        "timestamp": timestamp,
+        "start_time": datetime.datetime.now().isoformat(),
+        "runs": []
+    }
+    
+    # 创建工作目录
+    work_dir.mkdir(parents=True, exist_ok=True)
+    
+    print(f"\n📝 日志文件: {LOG_FILE}")
+    return LOG_FILE
+
+
+def log_step_output(step_name: str, input_data: Any, output_data: Any):
+    """记录步骤输出到日志文件"""
+    global LOG_DATA, LOG_FILE
+    
+    if LOG_FILE is None:
+        return
+    
+    # 转换为可序列化的格式
+    def to_serializable(obj):
+        if hasattr(obj, 'to_dict'):
+            return obj.to_dict()
+        elif hasattr(obj, '__dict__'):
+            return {k: to_serializable(v) for k, v in obj.__dict__.items() if not k.startswith('_')}
+        elif isinstance(obj, Path):
+            return str(obj)
+        elif isinstance(obj, (list, tuple)):
+            return [to_serializable(item) for item in obj]
+        elif isinstance(obj, dict):
+            return {k: to_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, (int, float, str, bool, type(None))):
+            return obj
+        else:
+            return str(obj)
+    
+    log_entry = {
+        "step": step_name,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "input": to_serializable(input_data),
+        "output": to_serializable(output_data)
+    }
+    
+    LOG_DATA["runs"].append(log_entry)
+    
+    # 实时写入文件
+    with open(LOG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(LOG_DATA, f, indent=2, ensure_ascii=False)
+
+
 def print_separator(title: str):
     """打印分隔线"""
     print("\n" + "=" * 70)
@@ -291,22 +356,58 @@ def print_separator(title: str):
     print("=" * 70)
 
 
-def print_output_summary(name: str, output):
-    """打印输出摘要"""
-    print(f"\n[{name}] 输出摘要:")
+def print_dict_detailed(data: dict, indent: int = 2, max_list_items: int = 20):
+    """递归打印字典的详细内容"""
+    prefix = " " * indent
+    
+    for key, value in data.items():
+        if isinstance(value, dict):
+            print(f"{prefix}{key}:")
+            print_dict_detailed(value, indent + 2)
+        elif isinstance(value, list):
+            if len(value) == 0:
+                print(f"{prefix}{key}: []")
+            elif len(value) <= max_list_items:
+                if all(isinstance(item, (int, float, str)) for item in value):
+                    # 简单类型列表，显示所有
+                    print(f"{prefix}{key}: {value}")
+                else:
+                    # 复杂类型列表，逐个显示
+                    print(f"{prefix}{key}: [{len(value)} items]")
+                    for i, item in enumerate(value[:max_list_items]):
+                        if isinstance(item, dict):
+                            print(f"{prefix}  [{i}]:")
+                            print_dict_detailed(item, indent + 4)
+                        else:
+                            print(f"{prefix}  [{i}]: {item}")
+            else:
+                print(f"{prefix}{key}: [{len(value)} items, showing first {max_list_items}]")
+                for i, item in enumerate(value[:max_list_items]):
+                    if isinstance(item, dict):
+                        print(f"{prefix}  [{i}]:")
+                        print_dict_detailed(item, indent + 4)
+                    else:
+                        print(f"{prefix}  [{i}]: {item}")
+        elif isinstance(value, str) and len(str(value)) > 200:
+            print(f"{prefix}{key}: {str(value)[:200]}... ({len(value)} chars)")
+        else:
+            print(f"{prefix}{key}: {value}")
+
+
+def print_output_summary(name: str, output, show_full: bool = True):
+    """打印输出摘要 (完整详细版)"""
+    print(f"\n[{name}] 完整输出:")
+    print("-" * 60)
+    
     if hasattr(output, 'to_dict'):
         data = output.to_dict()
-        for key, value in data.items():
-            if isinstance(value, dict):
-                print(f"  {key}: {{...}}")
-            elif isinstance(value, list):
-                print(f"  {key}: [{len(value)} items]")
-            elif isinstance(value, str) and len(str(value)) > 50:
-                print(f"  {key}: {str(value)[:50]}...")
-            else:
-                print(f"  {key}: {value}")
+        print_dict_detailed(data)
+    elif isinstance(output, dict):
+        print_dict_detailed(output)
     else:
         print(f"  {output}")
+    
+    print("-" * 60)
 
 
 def run_visual_step(
@@ -333,16 +434,50 @@ def run_visual_step(
     print(f"\n执行中...")
     output = step.run(input_data)
     
+    # 记录到日志文件
+    log_step_output("visual", {"video_path": str(video_path)}, output)
+    
     print_output_summary("VisualOutput", output)
-    print(f"\n关键结果:")
-    print(f"  - 镜头角度: {output.camera_angle}")
-    print(f"  - 焦距倾向: {output.focal_length_tendency}")
-    print(f"  - 色调: {output.hue_family}")
-    print(f"  - 饱和度: {output.saturation_band}")
-    print(f"  - 亮度: {output.brightness_band}")
+    
+    # 显示详细分布
+    print(f"\n📊 详细分布:")
+    print(f"\n  镜头角度分布:")
+    if hasattr(output, 'camera_angle_detail') and output.camera_angle_detail:
+        for item in output.camera_angle_detail.get('distribution', []):
+            print(f"    - {item['value']}: {item['count']}次 ({item['percentage']}%)")
+    
+    print(f"\n  色调分布:")
+    if hasattr(output, 'hue_detail') and output.hue_detail:
+        for item in output.hue_detail.get('distribution', []):
+            print(f"    - {item['value']}: {item['count']}次 ({item['percentage']}%)")
+    
+    print(f"\n  饱和度分布:")
+    if hasattr(output, 'saturation_detail') and output.saturation_detail:
+        for item in output.saturation_detail.get('distribution', []):
+            print(f"    - {item['value']}: {item['count']}次 ({item['percentage']}%)")
+    
+    print(f"\n  亮度分布:")
+    if hasattr(output, 'brightness_detail') and output.brightness_detail:
+        for item in output.brightness_detail.get('distribution', []):
+            print(f"    - {item['value']}: {item['count']}次 ({item['percentage']}%)")
+    
+    print(f"\n  对比度分布:")
+    if hasattr(output, 'contrast_detail') and output.contrast_detail:
+        for item in output.contrast_detail.get('distribution', []):
+            print(f"    - {item['value']}: {item['count']}次 ({item['percentage']}%)")
+    
+    print(f"\n  光线类型:")
+    if output.lighting and output.lighting.get('type_detail'):
+        for item in output.lighting['type_detail'].get('distribution', []):
+            print(f"    - {item['value']}: {item['count']}次 ({item['percentage']}%)")
+    
+    print(f"\n📈 关键数值:")
+    print(f"  - 总时长: {output.duration:.2f}s")
+    print(f"  - 采样帧数: {output.sampled_frames}")
     print(f"  - 剪辑数: {output.cuts}")
     print(f"  - 平均镜头时长: {output.avg_shot_length:.2f}s")
-    print(f"  - 时长: {output.duration:.2f}s")
+    if output.cct_mean:
+        print(f"  - 色温: {output.cct_mean:.0f}K (±{output.cct_std:.0f})")
     
     if should_pause:
         pause()
@@ -369,13 +504,37 @@ def run_audio_step(
     print(f"\n执行中...")
     output = step.run(input_data)
     
+    # 记录到日志文件
+    log_step_output("audio", {"audio_path": str(audio_path)}, output)
+    
     print_output_summary("AudioOutput", output)
-    print(f"\n关键结果:")
+    
+    # 显示详细分类结果
+    print(f"\n📊 CLAP 分类详情:")
+    print(f"\n  BGM 风格:")
+    print(f"    - 主要风格: {output.bgm_style}")
+    if hasattr(output, 'bgm_style_detail') and output.bgm_style_detail:
+        top3 = output.bgm_style_detail.get('top_3', [])
+        if top3:
+            print(f"    - Top 3 风格:")
+            for item in top3:
+                if isinstance(item, (list, tuple)) and len(item) >= 2:
+                    print(f"        {item[0]}: {item[1]:.1%}")
+    
+    print(f"\n  情绪分析:")
+    print(f"    - 主要情绪: {output.mood}")
+    if hasattr(output, 'mood_detail') and output.mood_detail:
+        top3 = output.mood_detail.get('top_3', [])
+        if top3:
+            print(f"    - Top 3 情绪:")
+            for item in top3:
+                if isinstance(item, (list, tuple)) and len(item) >= 2:
+                    print(f"        {item[0]}: {item[1]:.1%}")
+    
+    print(f"\n📈 基础指标:")
     print(f"  - BPM: {output.tempo_bpm:.1f}")
     print(f"  - 节拍数: {output.num_beats}")
     print(f"  - 打击乐比例: {output.percussive_ratio:.2f}")
-    print(f"  - BGM风格: {output.bgm_style}")
-    print(f"  - 情绪: {output.mood}")
     print(f"  - 调式: {output.key_signature}")
     print(f"  - 语音比例: {output.speech_ratio:.2f}")
     
@@ -396,34 +555,61 @@ def run_asr_step(
     输出: ASROutput (text, words_per_minute, pace, catchphrases, prosody, emotion)
     """
     print_separator("Step: ASR 语音识别 (ASRAnalysisStep)")
-    print(f"输入: ASRInput(audio_path={audio_path}, language='en', enable_prosody=True, enable_emotion=True)")
+    print(f"输入: ASRInput(audio_path={audio_path}, language='en', model_size='large-v3-turbo')")
     
     step = ASRAnalysisStep()
     input_data = ASRInput(
         audio_path=audio_path,
         language="en",
-        model_size="small",
+        model_size="large-v3-turbo",  # 使用最新最强模型
         enable_prosody=True,
         enable_emotion=True
     )
     
-    print(f"\n执行中 (Whisper 转录可能需要一些时间)...")
+    print(f"\n执行中 (Whisper large-v3-turbo 转录中)...")
     output = step.run(input_data)
     
+    # 记录到日志文件
+    log_step_output("asr", {"audio_path": str(audio_path)}, output)
+    
     print_output_summary("ASROutput", output)
-    print(f"\n关键结果:")
-    print(f"  - 词数: {output.num_words}")
-    print(f"  - 语速: {output.words_per_second:.2f} w/s ({output.words_per_minute:.1f} wpm)")
-    print(f"  - 节奏: {output.pace}")
-    print(f"  - 停顿风格: {output.pause_style}")
-    print(f"  - 口头禅: {output.catchphrases[:5] if output.catchphrases else '无'}")
-    if output.text:
-        preview = output.text[:100] + "..." if len(output.text) > 100 else output.text
-        print(f"  - 转录预览: {preview}")
+    
+    print(f"\n📊 ASR 详情:")
+    print(f"\n  转录统计:")
+    print(f"    - 词数: {output.num_words}")
+    print(f"    - 语速: {output.words_per_second:.2f} w/s ({output.words_per_minute:.1f} wpm)")
+    print(f"    - 节奏: {output.pace}")
+    print(f"    - 停顿数: {output.num_pauses}")
+    print(f"    - 停顿风格: {output.pause_style}")
+    
+    print(f"\n  口头禅 (高频短语):")
+    if output.catchphrases:
+        for phrase in output.catchphrases[:10]:
+            print(f"    - {phrase}")
+    else:
+        print(f"    - 无")
+    
     if output.prosody:
-        print(f"  - 韵律风格: {output.prosody.get('prosody_style', 'N/A')}")
+        print(f"\n  韵律分析:")
+        print(f"    - 平均音高: {output.prosody.get('mean_pitch_hz', 0):.1f} Hz")
+        print(f"    - 音高变化: {output.prosody.get('pitch_std', 0):.1f}")
+        print(f"    - 音调: {output.prosody.get('tone', 'N/A')}")
+        print(f"    - 韵律风格: {output.prosody.get('prosody_style', 'N/A')}")
+    
     if output.emotion:
-        print(f"  - 主要情感: {output.emotion.get('dominant_emotion', 'N/A')}")
+        print(f"\n  情感分析 (HuBERT):")
+        print(f"    - 主要情感: {output.emotion.get('dominant_emotion', 'N/A')}")
+        print(f"    - 置信度: {output.emotion.get('confidence', 0):.1%}")
+        emotion_scores = output.emotion.get('emotion_scores', {})
+        if emotion_scores:
+            print(f"    - 情感分布:")
+            for emotion, score in list(emotion_scores.items())[:5]:
+                print(f"        {emotion}: {score:.1%}")
+    
+    if output.text:
+        print(f"\n  转录文本 (前500字):")
+        preview = output.text[:500] + "..." if len(output.text) > 500 else output.text
+        print(f"    {preview}")
     
     if should_pause:
         pause()
@@ -436,13 +622,13 @@ def run_yolo_step(
     should_pause: bool = True
 ) -> Optional[YOLOOutput]:
     """
-    执行 YOLO 检测步骤
+    执行 YOLO 检测步骤 (YOLO11)
     
     输入: YOLOInput (video_path, target_frames, enable_colors, enable_materials)
     输出: YOLOOutput (detection, environment, colors, materials)
     """
-    print_separator("Step: YOLO 目标检测 (YOLOAnalysisStep)")
-    print(f"输入: YOLOInput(video_path={video_path}, target_frames=36)")
+    print_separator("Step: YOLO11 目标检测 (YOLOAnalysisStep)")
+    print(f"输入: YOLOInput(video_path={video_path}, target_frames=36, model=yolo11s.pt)")
     
     step = YOLOAnalysisStep()
     input_data = YOLOInput(
@@ -452,20 +638,51 @@ def run_yolo_step(
         enable_materials=True
     )
     
-    print(f"\n执行中...")
+    print(f"\n执行中 (YOLO11 检测中)...")
     output = step.run(input_data)
     
+    # 记录到日志文件
+    log_step_output("yolo", {"video_path": str(video_path)}, output)
+    
     print_output_summary("YOLOOutput", output)
-    print(f"\n关键结果:")
+    
+    print(f"\n📊 YOLO11 检测详情:")
     detection = output.detection
     environment = output.environment
-    print(f"  - 环境类型: {environment.get('environment_type', 'N/A')}")
-    print(f"  - 烹饪风格: {environment.get('cooking_style', 'N/A')}")
-    print(f"  - 检测物体类数: {detection.get('unique_objects', 0)}")
-    print(f"  - 总检测次数: {detection.get('total_detections', 0)}")
-    top_objects = detection.get('top_objects', [])
-    if top_objects:
-        print(f"  - Top 物体: {', '.join([f'{name}({count})' for name, count in top_objects[:5]])}")
+    
+    print(f"\n  环境分析:")
+    print(f"    - 环境类型: {environment.get('environment_type', 'N/A')}")
+    print(f"    - 烹饪风格: {environment.get('cooking_style', 'N/A')}")
+    print(f"    - 设备档次: {environment.get('appliance_tier', 'N/A')}")
+    
+    print(f"\n  检测统计:")
+    print(f"    - 检测物体类数: {detection.get('unique_objects', 0)}")
+    print(f"    - 总检测次数: {detection.get('total_detections', 0)}")
+    print(f"    - 处理帧数: {detection.get('frames_processed', 0)}")
+    
+    print(f"\n  检测到的物体:")
+    object_counts = detection.get('object_counts', {})
+    for obj, count in sorted(object_counts.items(), key=lambda x: x[1], reverse=True):
+        avg_conf = detection.get('avg_confidence', {}).get(obj, 0)
+        print(f"    - {obj}: {count}次 (置信度: {avg_conf:.1%})")
+    
+    # 颜色分析
+    colors = output.colors
+    if colors and colors.get('detailed_analysis'):
+        print(f"\n  物体颜色分析:")
+        for obj, analysis in colors.get('detailed_analysis', {}).items():
+            print(f"    {obj}:")
+            for item in analysis.get('distribution', []):
+                print(f"      - {item['color']}: {item['count']}次 ({item['percentage']}%)")
+    
+    # 材质分析
+    materials = output.materials
+    if materials and materials.get('detailed_analysis'):
+        print(f"\n  物体材质分析:")
+        for obj, analysis in materials.get('detailed_analysis', {}).items():
+            print(f"    {obj}:")
+            for item in analysis.get('distribution', []):
+                print(f"      - {item['material']}: {item['count']}次 ({item['percentage']}%)")
     
     if should_pause:
         pause()
@@ -559,16 +776,26 @@ def main():
     # 创建工作目录
     work_dir.mkdir(parents=True, exist_ok=True)
     
+    # 初始化日志文件
+    log_file = init_log_file(work_dir)
+    
     print("\n" + "=" * 70)
-    print("  模块化流水线调试脚本")
+    print("  模块化流水线调试脚本 (SOTA 2025/2026)")
     print("=" * 70)
-    print(f"\n配置:")
+    print(f"\n📋 配置:")
     print(f"  - 视频: {[str(p) for p in video_paths]}")
     print(f"  - 模块: {modules}")
-    print(f"  - 输出: {args.output}")
+    print(f"  - 输出报告: {args.output}")
     print(f"  - 工作目录: {work_dir}")
+    print(f"  - 日志文件: {log_file}")
     print(f"  - 暂停模式: {'否' if args.no_pause else '是'}")
     print(f"  - 需要音频: {'是' if needs_audio else '否'}")
+    print(f"\n🔧 使用的模型:")
+    print(f"  - 场景分类: CLIP (openai/clip-vit-large-patch14)")
+    print(f"  - 音频分类: CLAP (laion/larger_clap_music_and_speech)")
+    print(f"  - 语音情感: HuBERT (superb/hubert-large-superb-er)")
+    print(f"  - ASR: Whisper large-v3-turbo")
+    print(f"  - 目标检测: YOLO11 (yolo11s.pt)")
     
     # 提取音频 (如果需要)
     audio_paths: List[Optional[Path]] = []

@@ -105,23 +105,33 @@ class AudioAnalysisStep(PipelineStep[AudioInput, AudioOutput]):
             raise
     
     def _convert_to_output(self, raw_result: dict) -> AudioOutput:
-        """将原始字典结果转换为 AudioOutput"""
+        """将原始字典结果转换为 AudioOutput (CLAP 版本)"""
         return AudioOutput(
             success=True,
+            # 基础节奏分析
             tempo_bpm=raw_result.get("tempo_bpm", 0.0),
             beat_times=raw_result.get("beat_times", []),
             num_beats=raw_result.get("num_beats", 0),
             percussive_ratio=raw_result.get("percussive_ratio", 0.0),
+            # 频谱特征
             spectral_centroid=raw_result.get("spectral_centroid", 0.0),
             spectral_flatness=raw_result.get("spectral_flatness", 0.0),
             zero_crossing_rate=raw_result.get("zero_crossing_rate", 0.0),
+            # 能量特征
             mean_energy=raw_result.get("mean_energy", 0.0),
             energy_variance=raw_result.get("energy_variance", 0.0),
             spectral_rolloff=raw_result.get("spectral_rolloff", 0.0),
             speech_ratio=raw_result.get("speech_ratio", 0.0),
+            # CLAP BGM 风格 (含详细分布)
             bgm_style=raw_result.get("bgm_style", "Unknown"),
+            bgm_style_confidence=raw_result.get("bgm_style_confidence", 0.0),
+            bgm_style_detail=raw_result.get("bgm_style_detail", {}),
+            # CLAP 情绪 (含详细分布)
             mood=raw_result.get("mood", "Unknown"),
+            mood_confidence=raw_result.get("mood_confidence", 0.0),
+            mood_detail=raw_result.get("mood_detail", {}),
             mood_tags=raw_result.get("mood_tags", []),
+            # 乐器和调式
             instruments=raw_result.get("instruments", {}),
             key_signature=raw_result.get("key_signature"),
         )

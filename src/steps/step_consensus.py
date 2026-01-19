@@ -107,9 +107,9 @@ class ConsensusStep(PipelineStep[ConsensusInput, ConsensusOutput]):
             self.log_complete(error_output)
             raise
     
-    def _majority_value(self, values: List[Any], min_count: int = 2) -> str:
+    def _majority_value(self, values: List[Any], min_count: int = 1) -> str:
         """
-        多数票规则：需要至少 min_count 次出现才算稳定共识
+        多数票规则：返回最常见的值（不再返回 Varied）
         """
         if not values:
             return "N/A"
@@ -119,9 +119,43 @@ class ConsensusStep(PipelineStep[ConsensusInput, ConsensusOutput]):
             return "N/A"
         counter = Counter(valid_values)
         most_common = counter.most_common(1)
-        if most_common and most_common[0][1] >= min_count:
+        if most_common:
             return str(most_common[0][0])
-        return "Varied"
+        return "N/A"
+    
+    def _detailed_distribution(self, values: List[Any]) -> Dict[str, Any]:
+        """
+        返回详细的分布统计（不再返回 Varied）
+        """
+        if not values:
+            return {"dominant": "N/A", "distribution": [], "all_values": []}
+        
+        # 过滤掉 None 和空字符串
+        valid_values = [v for v in values if v is not None and v != ""]
+        if not valid_values:
+            return {"dominant": "N/A", "distribution": [], "all_values": []}
+        
+        counter = Counter(valid_values)
+        total = len(valid_values)
+        
+        distribution = [
+            {
+                "value": str(val),
+                "count": count,
+                "percentage": round(count / total * 100, 1)
+            }
+            for val, count in counter.most_common()
+        ]
+        
+        dominant = str(counter.most_common(1)[0][0]) if counter else "N/A"
+        
+        return {
+            "dominant": dominant,
+            "distribution": distribution,
+            "all_values": [str(v) for v in counter.keys()],
+            "unique_count": len(counter),
+            "total_samples": total
+        }
     
     def _median_value(self, values: List[Any]) -> Optional[float]:
         """
@@ -186,23 +220,46 @@ class ConsensusStep(PipelineStep[ConsensusInput, ConsensusOutput]):
                 artificial_ratios.append(lighting["artificial_light_ratio"])
         
         return {
+            # 镜头分析 (含详细分布)
             "camera_angle": self._majority_value(camera_angles),
+            "camera_angle_detail": self._detailed_distribution(camera_angles),
             "focal_length_tendency": self._majority_value(focal_tendencies),
+            "focal_length_detail": self._detailed_distribution(focal_tendencies),
             "camera_motion": self._majority_value(camera_motions),
+            "camera_motion_detail": self._detailed_distribution(camera_motions),
+            
+            # 构图分析 (含详细分布)
             "composition_rule_of_thirds": self._majority_value(compositions),
+            "composition_detail": self._detailed_distribution(compositions),
+            
+            # 场景分类 (含详细分布)
             "scene_category": self._majority_value(scene_labels),
+            "scene_category_detail": self._detailed_distribution(scene_labels),
+            
+            # 色彩分析 (含详细分布)
             "hue_family": self._majority_value(hue_families),
+            "hue_detail": self._detailed_distribution(hue_families),
             "saturation": self._majority_value(saturations),
+            "saturation_detail": self._detailed_distribution(saturations),
             "brightness": self._majority_value(brightnesses),
+            "brightness_detail": self._detailed_distribution(brightnesses),
             "contrast": self._majority_value(contrasts),
+            "contrast_detail": self._detailed_distribution(contrasts),
+            
+            # 数值指标
             "cct": self._median_value(ccts),
             "natural_light_ratio": self._median_value(natural_ratios),
             "artificial_light_ratio": self._median_value(artificial_ratios),
             "cuts_per_minute": self._median_value(cuts_per_min),
             "avg_shot_length": self._median_value(avg_shot_lengths),
+            
+            # 其他分类 (含详细分布)
             "transition_type": self._majority_value(transition_types),
+            "transition_detail": self._detailed_distribution(transition_types),
             "countertop_color": self._majority_value(countertop_colors),
+            "countertop_color_detail": self._detailed_distribution(countertop_colors),
             "countertop_texture": self._majority_value(countertop_textures),
+            "countertop_texture_detail": self._detailed_distribution(countertop_textures),
         }
     
     def _extract_audio_consensus(self, metrics_dicts: List[Dict]) -> Dict[str, Any]:
