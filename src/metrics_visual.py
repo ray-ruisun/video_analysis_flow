@@ -166,7 +166,8 @@ def estimate_focal_length_tendency(frames):
         # Analyze line convergence (perspective distortion)
         # Wide-angle: more convergence, Telephoto: less convergence
         angles = []
-        for rho, theta in lines[:20]:  # Sample first 20 lines
+        for line in lines[:20]:  # Sample first 20 lines
+            rho, theta = line[0]  # HoughLines returns [[[rho, theta], ...]]
             angles.append(theta)
         
         if len(angles) < 3:
