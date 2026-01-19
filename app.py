@@ -670,11 +670,12 @@ def upload_video(video_file):
     return status, audio_path, frame_paths
 
 
-def run_visual(progress=gr.Progress()):
+# Internal analysis functions (no progress tracking)
+def _run_visual_internal():
+    """Internal visual analysis without progress tracking"""
     if STATE.video_path is None:
         return f"❌ {t('upload_first')}", None
     
-    progress(0.1, desc=f"{t('loading')} CLIP...")
     cfg = STATE.config.visual
     step = VisualAnalysisStep()
     input_data = VideoInput(
@@ -685,34 +686,27 @@ def run_visual(progress=gr.Progress()):
         scene_threshold=cfg.scene_threshold
     )
     
-    progress(0.4, desc=f"{t('analyzing')}...")
     STATE.visual_output = step.run(input_data)
-    
-    progress(1.0, desc=t('done'))
     contact = STATE.visual_output.contact_sheet if STATE.visual_output else None
     return format_visual(STATE.visual_output), contact
 
 
-def run_audio(progress=gr.Progress()):
+def _run_audio_internal():
+    """Internal audio analysis without progress tracking"""
     if STATE.audio_path is None:
         return f"❌ {t('upload_first')}"
     
-    progress(0.1, desc=f"{t('loading')} CLAP...")
     step = AudioAnalysisStep()
     input_data = AudioInput(audio_path=STATE.audio_path)
-    
-    progress(0.4, desc=f"{t('analyzing')}...")
     STATE.audio_output = step.run(input_data)
-    
-    progress(1.0, desc=t('done'))
     return format_audio(STATE.audio_output)
 
 
-def run_asr(language: str, progress=gr.Progress()):
+def _run_asr_internal(language: str):
+    """Internal ASR analysis without progress tracking"""
     if STATE.audio_path is None:
         return f"❌ {t('upload_first')}"
     
-    progress(0.1, desc=f"{t('loading')} Whisper...")
     cfg = STATE.config.asr
     step = ASRAnalysisStep()
     input_data = ASRInput(
@@ -723,19 +717,15 @@ def run_asr(language: str, progress=gr.Progress()):
         enable_prosody=True,
         enable_emotion=True
     )
-    
-    progress(0.4, desc=f"{t('analyzing')}...")
     STATE.asr_output = step.run(input_data)
-    
-    progress(1.0, desc=t('done'))
     return format_asr(STATE.asr_output)
 
 
-def run_yolo(progress=gr.Progress()):
+def _run_yolo_internal():
+    """Internal YOLO analysis without progress tracking"""
     if STATE.video_path is None:
         return f"❌ {t('upload_first')}"
     
-    progress(0.1, desc=f"{t('loading')} YOLO11...")
     cfg = STATE.config.yolo
     step = YOLOAnalysisStep()
     input_data = YOLOInput(
@@ -746,27 +736,23 @@ def run_yolo(progress=gr.Progress()):
         enable_colors=cfg.enable_colors,
         enable_materials=cfg.enable_materials
     )
-    
-    progress(0.4, desc=f"{t('analyzing')}...")
     STATE.yolo_output = step.run(input_data)
-    
-    progress(1.0, desc=t('done'))
     return format_yolo(STATE.yolo_output)
 
 
-def run_ai_detection(progress=gr.Progress()):
+def _run_ai_detection_internal():
+    """Internal AI detection without progress tracking"""
     if STATE.video_path is None:
         return f"❌ {t('upload_first')}"
     
     cfg = STATE.config.ai_detection
     if not cfg.enabled:
-        return "❌ AI Detection is disabled in configuration"
+        return "❌ AI Detection is disabled"
     
-    progress(0.1, desc=f"{t('loading')} AI Detection Models...")
     step = AIDetectionStep()
     input_data = AIDetectionInput(
         video_path=STATE.video_path,
-        audio_path=STATE.audio_path,  # Pass audio for audio deepfake detection
+        audio_path=STATE.audio_path,
         use_deepfake=cfg.use_deepfake,
         use_clip=cfg.use_clip,
         use_temporal=cfg.use_temporal,
@@ -784,12 +770,49 @@ def run_ai_detection(progress=gr.Progress()):
         audio_deepfake_weight=cfg.audio_deepfake_weight,
         face_weight=cfg.face_weight,
     )
-    
-    progress(0.4, desc=f"{t('analyzing')}...")
     STATE.ai_output = step.run(input_data)
-    
-    progress(1.0, desc=t('done'))
     return format_ai_detection(STATE.ai_output)
+
+
+# Public analysis functions with progress tracking (for standalone button clicks)
+def run_visual(progress=gr.Progress()):
+    progress(0.1, desc="📹 Loading CLIP...")
+    progress(0.3, desc="📹 Analyzing visual...")
+    result = _run_visual_internal()
+    progress(1.0, desc="✅ Visual done")
+    return result
+
+
+def run_audio(progress=gr.Progress()):
+    progress(0.1, desc="🎵 Loading CLAP...")
+    progress(0.3, desc="🎵 Analyzing audio...")
+    result = _run_audio_internal()
+    progress(1.0, desc="✅ Audio done")
+    return result
+
+
+def run_asr(language: str, progress=gr.Progress()):
+    progress(0.1, desc="🎤 Loading Whisper...")
+    progress(0.3, desc="🎤 Transcribing...")
+    result = _run_asr_internal(language)
+    progress(1.0, desc="✅ ASR done")
+    return result
+
+
+def run_yolo(progress=gr.Progress()):
+    progress(0.1, desc="🔍 Loading YOLO...")
+    progress(0.3, desc="🔍 Detecting objects...")
+    result = _run_yolo_internal()
+    progress(1.0, desc="✅ YOLO done")
+    return result
+
+
+def run_ai_detection(progress=gr.Progress()):
+    progress(0.1, desc="🤖 Loading AI models...")
+    progress(0.3, desc="🤖 Detecting AI content...")
+    result = _run_ai_detection_internal()
+    progress(1.0, desc="✅ AI detection done")
+    return result
 
 
 def run_consensus():
@@ -810,22 +833,24 @@ def run_consensus():
 
 
 def run_all(language: str, progress=gr.Progress()):
-    progress(0.05, desc="📹 Visual...")
-    visual_result, contact = run_visual()
+    # Use internal functions to avoid duplicate progress bars
     
-    progress(0.20, desc="🎵 Audio...")
-    audio_result = run_audio()
+    progress(0.05, desc="📹 Step 1/6: Visual Analysis...")
+    visual_result, contact = _run_visual_internal()
     
-    progress(0.35, desc="🎤 ASR...")
-    asr_result = run_asr(language)
+    progress(0.20, desc="🎵 Step 2/6: Audio Analysis...")
+    audio_result = _run_audio_internal()
     
-    progress(0.50, desc="🔍 YOLO...")
-    yolo_result = run_yolo()
+    progress(0.35, desc="🎤 Step 3/6: Speech Recognition...")
+    asr_result = _run_asr_internal(language)
     
-    progress(0.65, desc="🤖 AI Detection...")
-    ai_result = run_ai_detection() if STATE.config.ai_detection.enabled else "*Disabled*"
+    progress(0.50, desc="🔍 Step 4/6: Object Detection...")
+    yolo_result = _run_yolo_internal()
     
-    progress(0.85, desc="📊 Summary...")
+    progress(0.65, desc="🤖 Step 5/6: AI Detection...")
+    ai_result = _run_ai_detection_internal() if STATE.config.ai_detection.enabled else "*Disabled*"
+    
+    progress(0.85, desc="📊 Step 6/6: Generating Summary...")
     consensus_result = run_consensus()
     
     progress(1.0, desc=t('done'))
