@@ -31,7 +31,7 @@ soundfile>=0.11.0
 # essentia-tensorflow 在某些 Python 版本上有兼容性问题
 # 如果安装失败，可以尝试: pip install essentia
 # 或者跳过，audio 模块会有部分功能受限 (BGM风格、情绪分析)
-essentia-tensorflow>=2.1b6.dev1389
+essentia-tensorflow
 
 # ============================================================================
 # ASR 语音识别模块 (asr) - 使用 asr 模块时必需
