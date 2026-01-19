@@ -986,48 +986,10 @@ def switch_language(lang: str):
 # =============================================================================
 # Gradio UI
 # =============================================================================
-# Custom CSS for better UI
-CUSTOM_CSS = """
-/* Better video preview scaling */
-.video-preview video {
-    max-height: 300px !important;
-    object-fit: contain !important;
-}
-
-/* Gallery improvements */
-.gallery-container {
-    min-height: 200px !important;
-}
-
-/* Tooltip styling */
-.tooltip-icon {
-    cursor: help;
-    color: #666;
-}
-
-/* Better button spacing */
-.button-row button {
-    margin: 2px !important;
-}
-
-/* Responsive video container */
-.responsive-video {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 16/9;
-}
-
-/* Portrait video support */
-.portrait-video {
-    aspect-ratio: 9/16;
-    max-height: 400px;
-}
-"""
-
 def create_ui():
     cfg = STATE.config
     
-    with gr.Blocks(title="Video Style Analysis", css=CUSTOM_CSS) as demo:
+    with gr.Blocks(title="Video Style Analysis") as demo:
         
         # Header
         header_md = gr.Markdown(f"# {t('title')}\n**{t('subtitle')}** | {t('models')}")
@@ -1077,11 +1039,10 @@ def create_ui():
                         with gr.Row():
                             with gr.Column(scale=1):
                                 gr.Markdown("**🔊 Extracted Audio**")
-                                gr.Markdown("*Audio track separated from video*", elem_classes=["text-muted"])
+                                gr.Markdown("*Audio track separated from video*")
                                 audio_player = gr.Audio(
                                     label="Audio Preview",
-                                    type="filepath",
-                                    show_download_button=True
+                                    type="filepath"
                                 )
                         
                         gr.Markdown("### 🖼️ Key Frames Gallery")
@@ -1093,8 +1054,7 @@ def create_ui():
                             height=280,
                             object_fit="contain",
                             allow_preview=True,
-                            preview=True,
-                            show_download_button=True
+                            preview=True
                         )
             
             # ========== Tab 2: Run Analysis ==========
@@ -1134,8 +1094,7 @@ def create_ui():
                         visual_result = gr.Markdown(f"*{t('upload_first')}*")
                         contact_img = gr.Image(
                             label="Contact Sheet (Frame Overview)",
-                            height=200,
-                            show_download_button=True
+                            height=200
                         )
                     
                     with gr.Tab("🎵 BGM & Tempo", id="result_audio"):
@@ -1414,6 +1373,5 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=args.port,
         share=args.share,
-        show_error=True,
-        theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")
+        show_error=True
     )
