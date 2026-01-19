@@ -132,6 +132,8 @@ TRANSLATIONS = {
         "deepfake": "Deepfake",
         "synthetic": "Synthetic",
         "suspicious": "Suspicious",
+        "already_added": "Already in list",
+        "add_more_videos": "➕ Add More Videos",
     },
     "zh": {
         "title": "🎬 视频风格分析系统",
@@ -232,6 +234,8 @@ TRANSLATIONS = {
         "deepfake": "深度伪造",
         "synthetic": "合成",
         "suspicious": "可疑",
+        "already_added": "已在列表中",
+        "add_more_videos": "➕ 添加更多视频",
     }
 }
 
@@ -856,10 +860,34 @@ def format_ai_detection(output: AIDetectionOutput) -> str:
 def upload_video(video_file):
     """Upload and add a video to the list (doesn't reset existing videos)"""
     if video_file is None:
-        return t('upload_first'), None, [], get_video_list_header(), gr.update(choices=[], value=None)
+        # Close button clicked - just clear preview, keep video list intact
+        if STATE.videos:
+            # Keep current state, just return current info without changes
+            choices = get_video_list_choices()
+            video = STATE.videos[STATE.current_index] if STATE.current_index < len(STATE.videos) else None
+            if video and video.video_path:
+                num_frames = STATE.config.ui.gallery_frames
+                frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames)
+                audio_str = str(video.audio_path) if video.audio_path else None
+                status = f"📹 {t('video_n').format(n=STATE.current_index+1)}: {video.video_path.name}"
+                return status, audio_str, frame_paths, get_video_list_header(), gr.update(choices=choices, value=STATE.current_index)
+        return t('upload_first'), None, [], get_video_list_header(), gr.update(choices=get_video_list_choices(), value=STATE.current_index if STATE.videos else None)
     
     import shutil
     video_path = Path(video_file)
+    
+    # Check if video already exists in list (by filename)
+    for i, v in enumerate(STATE.videos):
+        if v.video_path and v.video_path.name == video_path.name:
+            # Video already exists, just switch to it
+            STATE.current_index = i
+            STATE.sync_current_to_legacy()
+            num_frames = STATE.config.ui.gallery_frames
+            frame_paths = extract_frames_for_gallery(v.video_path, v.work_dir, num_frames)
+            audio_str = str(v.audio_path) if v.audio_path else None
+            status = f"📹 {t('video_n').format(n=i+1)}: {v.video_path.name} ({t('already_added')})"
+            choices = get_video_list_choices()
+            return status, audio_str, frame_paths, get_video_list_header(), gr.update(choices=choices, value=i)
     
     # Create main work directory if not exists
     if STATE.work_dir is None:
@@ -952,14 +980,14 @@ def clear_all_videos():
 def select_video_from_list(index):
     """Select a video from the radio list (index is passed directly)"""
     if index is None or not STATE.videos:
-        return t('no_videos'), None, []
+        return t('no_videos'), None, [], None
     
     # Convert to int if needed
     if isinstance(index, str):
         try:
             index = int(index)
         except:
-            return t('no_videos'), None, []
+            return t('no_videos'), None, [], None
     
     if 0 <= index < len(STATE.videos):
         STATE.current_index = index
@@ -971,11 +999,12 @@ def select_video_from_list(index):
             num_frames = STATE.config.ui.gallery_frames
             frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames)
             audio_path = str(video.audio_path) if video.audio_path else None
+            video_path_str = str(video.video_path)
             
             status = f"📹 {t('video_n').format(n=index+1)}: {video.video_path.name}"
-            return status, audio_path, frame_paths
+            return status, audio_path, frame_paths, video_path_str
     
-    return t('no_videos'), None, []
+    return t('no_videos'), None, [], None
 
 
 def load_video_results(index):
@@ -1937,7 +1966,7 @@ def create_ui():
                             outputs=[video_list_header, video_list_radio])
         
         video_list_radio.change(fn=select_video_from_list, inputs=[video_list_radio],
-                               outputs=[upload_status, audio_player, frame_gallery])
+                               outputs=[upload_status, audio_player, frame_gallery, video_input])
         
         # Sync video selection between Upload tab and Analysis tab
         results_video_selector.change(fn=load_video_results, inputs=[results_video_selector],
