@@ -870,8 +870,10 @@ def upload_video(video_file):
                 frame_paths = extract_frames_for_gallery(video.video_path, video.work_dir, num_frames)
                 audio_str = str(video.audio_path) if video.audio_path else None
                 status = f"📹 {t('video_n').format(n=STATE.current_index+1)}: {video.video_path.name}"
-                return status, audio_str, frame_paths, get_video_list_header(), gr.update(choices=choices, value=STATE.current_index)
-        return t('upload_first'), None, [], get_video_list_header(), gr.update(choices=get_video_list_choices(), value=STATE.current_index if STATE.videos else None)
+                return status, audio_str, frame_paths, get_video_list_header(), gr.update(choices=choices, value=STATE.current_index), gr.update(choices=choices, value=STATE.current_index)
+        cur_val = STATE.current_index if STATE.videos else None
+        choices = get_video_list_choices()
+        return t('upload_first'), None, [], get_video_list_header(), gr.update(choices=choices, value=cur_val), gr.update(choices=choices, value=cur_val)
     
     import shutil
     video_path = Path(video_file)
@@ -887,7 +889,7 @@ def upload_video(video_file):
             audio_str = str(v.audio_path) if v.audio_path else None
             status = f"📹 {t('video_n').format(n=i+1)}: {v.video_path.name} ({t('already_added')})"
             choices = get_video_list_choices()
-            return status, audio_str, frame_paths, get_video_list_header(), gr.update(choices=choices, value=i)
+            return status, audio_str, frame_paths, get_video_list_header(), gr.update(choices=choices, value=i), gr.update(choices=choices, value=i)
     
     # Create main work directory if not exists
     if STATE.work_dir is None:
@@ -927,13 +929,15 @@ def upload_video(video_file):
     # Get updated choices for radio
     choices = get_video_list_choices()
     
-    return status, audio_str, frame_paths, get_video_list_header(), gr.update(choices=choices, value=idx)
+    return status, audio_str, frame_paths, get_video_list_header(), gr.update(choices=choices, value=idx), gr.update(choices=choices, value=idx)
 
 
 def add_more_videos(video_files):
     """Add multiple videos to the list"""
     if video_files is None or len(video_files) == 0:
-        return get_video_list_header(), gr.update()
+        choices = get_video_list_choices()
+        cur_val = STATE.current_index if STATE.videos else None
+        return get_video_list_header(), gr.update(choices=choices, value=cur_val), gr.update(choices=choices, value=cur_val)
     
     import shutil
     
@@ -947,6 +951,15 @@ def add_more_videos(video_files):
     
     for video_file in video_files:
         video_path = Path(video_file)
+        
+        # Check if video already exists
+        exists = False
+        for v in STATE.videos:
+            if v.video_path and v.video_path.name == video_path.name:
+                exists = True
+                break
+        if exists:
+            continue
         
         # Create unique subdirectory for this video
         video_idx = len(STATE.videos)
@@ -966,28 +979,30 @@ def add_more_videos(video_files):
     
     # Don't change current selection - user can switch manually
     choices = get_video_list_choices()
+    cur_val = STATE.current_index if STATE.videos else None
     
-    return get_video_list_header(), gr.update(choices=choices)
+    return get_video_list_header(), gr.update(choices=choices, value=cur_val), gr.update(choices=choices, value=cur_val)
 
 
 
 def clear_all_videos():
     """Clear all videos"""
     STATE.reset()
-    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
+    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], gr.update(choices=[], value=None)
 
 
 def select_video_from_list(index):
     """Select a video from the radio list (index is passed directly)"""
+    choices = get_video_list_choices()
     if index is None or not STATE.videos:
-        return t('no_videos'), None, [], None
+        return t('no_videos'), None, [], None, gr.update(choices=choices, value=None)
     
     # Convert to int if needed
     if isinstance(index, str):
         try:
             index = int(index)
         except:
-            return t('no_videos'), None, [], None
+            return t('no_videos'), None, [], None, gr.update(choices=choices, value=None)
     
     if 0 <= index < len(STATE.videos):
         STATE.current_index = index
@@ -1002,9 +1017,9 @@ def select_video_from_list(index):
             video_path_str = str(video.video_path)
             
             status = f"📹 {t('video_n').format(n=index+1)}: {video.video_path.name}"
-            return status, audio_path, frame_paths, video_path_str
+            return status, audio_path, frame_paths, video_path_str, gr.update(choices=choices, value=index)
     
-    return t('no_videos'), None, [], None
+    return t('no_videos'), None, [], None, gr.update(choices=choices, value=None)
 
 
 def load_video_results(index):
@@ -1042,7 +1057,7 @@ def load_video_results(index):
 def delete_current_video():
     """Delete the currently selected video"""
     if not STATE.videos:
-        return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
+        return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], gr.update(choices=[], value=None)
     
     idx = STATE.current_index
     if 0 <= idx < len(STATE.videos):
@@ -1061,13 +1076,13 @@ def delete_current_video():
             audio_path = str(video.audio_path) if video.audio_path else None
             status = f"📹 {t('video_n').format(n=STATE.current_index+1)}: {video.video_path.name if video.video_path else 'N/A'}"
             choices = get_video_list_choices()
-            return get_video_list_header(), gr.update(choices=choices, value=STATE.current_index), status, audio_path, frame_paths
+            return get_video_list_header(), gr.update(choices=choices, value=STATE.current_index), status, audio_path, frame_paths, gr.update(choices=choices, value=STATE.current_index)
         else:
             STATE.video_path = None
             STATE.audio_path = None
-            return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
+            return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], gr.update(choices=[], value=None)
     
-    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, []
+    return get_video_list_header(), gr.update(choices=[], value=None), t('no_videos'), None, [], gr.update(choices=[], value=None)
 
 
 
@@ -1080,20 +1095,21 @@ def get_video_list_choices() -> List[Tuple[str, int]]:
     for i, video in enumerate(STATE.videos):
         name = video.video_path.name if video.video_path else f"Video {i+1}"
         
-        # Status indicators
-        status_icons = []
-        if video.visual_output:
-            status_icons.append("✓V")
-        if video.audio_output:
-            status_icons.append("✓A")
-        if video.asr_output:
-            status_icons.append("✓S")
-        if video.yolo_output:
-            status_icons.append("✓Y")
-        if video.ai_output:
-            status_icons.append("✓AI")
+        # Only show X marks for modules NOT analyzed
+        missing = []
+        if not video.visual_output:
+            missing.append("✗V")
+        if not video.audio_output:
+            missing.append("✗A")
+        if not video.asr_output:
+            missing.append("✗S")
+        if not video.yolo_output:
+            missing.append("✗Y")
+        if not video.ai_output:
+            missing.append("✗AI")
         
-        status_str = f" [{' '.join(status_icons)}]" if status_icons else " [⏳]"
+        # Show missing modules or nothing if all done
+        status_str = f" [{' '.join(missing)}]" if missing else ""
         label = f"📹 {i+1}. {name}{status_str}"
         choices.append((label, i))
     
@@ -1960,23 +1976,23 @@ def create_ui():
         
         # ========== Event Handlers ==========
         video_input.change(fn=upload_video, inputs=[video_input],
-                          outputs=[upload_status, audio_player, frame_gallery, video_list_header, video_list_radio])
+                          outputs=[upload_status, audio_player, frame_gallery, video_list_header, video_list_radio, results_video_selector])
         
         add_video_btn.upload(fn=add_more_videos, inputs=[add_video_btn],
-                            outputs=[video_list_header, video_list_radio])
+                            outputs=[video_list_header, video_list_radio, results_video_selector])
         
         video_list_radio.change(fn=select_video_from_list, inputs=[video_list_radio],
-                               outputs=[upload_status, audio_player, frame_gallery, video_input])
+                               outputs=[upload_status, audio_player, frame_gallery, video_input, results_video_selector])
         
         # Sync video selection between Upload tab and Analysis tab
         results_video_selector.change(fn=load_video_results, inputs=[results_video_selector],
                                      outputs=[visual_result, contact_img, audio_result, asr_result, yolo_result, ai_result])
         
         delete_video_btn.click(fn=delete_current_video, inputs=[],
-                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery])
+                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery, results_video_selector])
         
         clear_videos_btn.click(fn=clear_all_videos, inputs=[],
-                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery])
+                              outputs=[video_list_header, video_list_radio, upload_status, audio_player, frame_gallery, results_video_selector])
         
         run_visual_btn.click(fn=run_visual, outputs=[visual_result, contact_img])
         run_audio_btn.click(fn=run_audio, outputs=[audio_result])
