@@ -52,12 +52,23 @@ except ImportError:
     LIBROSA_AVAILABLE = False
     logger.warning("librosa not available for prosody analysis. Install with: pip install librosa")
 
+# Emotion analysis - speechbrain is optional (有版本兼容性问题)
+SPEECHBRAIN_AVAILABLE = False
+EncoderClassifier = None
+
 try:
     from speechbrain.pretrained import EncoderClassifier
+    SPEECHBRAIN_AVAILABLE = True
 except ImportError as e:
-    logger.error(f"speechbrain not installed: {e}")
-    logger.error("Install with: pip install speechbrain torchaudio")
-    raise ImportError("speechbrain is required. Install with: pip install speechbrain torchaudio")
+    logger.warning(f"speechbrain not available: {e}")
+    logger.warning("Emotion analysis will be disabled. Install with: pip install speechbrain==0.5.14 torchaudio==2.0.0")
+except AttributeError as e:
+    # torchaudio version compatibility issue
+    logger.warning(f"speechbrain/torchaudio version incompatibility: {e}")
+    logger.warning("Emotion analysis will be disabled. Try: pip install speechbrain==0.5.14 torchaudio==2.0.0")
+except Exception as e:
+    logger.warning(f"Failed to import speechbrain: {e}")
+    logger.warning("Emotion analysis will be disabled.")
 
 import torch
 from pathlib import Path
@@ -71,6 +82,10 @@ _EMOTION_CLASSIFIER = None
 def _load_emotion_classifier():
     """Lazy-load SpeechBrain emotion recognition model."""
     global _EMOTION_CLASSIFIER
+    
+    if not SPEECHBRAIN_AVAILABLE:
+        raise ImportError("SpeechBrain not available. Emotion analysis is disabled.")
+    
     if _EMOTION_CLASSIFIER is not None:
         return _EMOTION_CLASSIFIER
     
