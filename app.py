@@ -409,27 +409,53 @@ def convert_docx_to_pdf(docx_path: str) -> Optional[str]:
 # =============================================================================
 # Result Formatters
 # =============================================================================
+
+def fmt_conf(value, fmt=".0%"):
+    """Format confidence value, return '—' if 0, None, or invalid"""
+    if value is None or value == 0 or (isinstance(value, float) and value < 0.001):
+        return "—"
+    try:
+        if fmt == ".0%":
+            return f"{value:.0%}"
+        elif fmt == ".1%":
+            return f"{value:.1%}"
+        else:
+            return f"{value:{fmt}}"
+    except:
+        return "—"
+
 def format_visual(output: VisualOutput) -> str:
     if not output or not output.success:
         return f"❌ {t('analysis_failed')}"
     
     # Scene categories with confidence (safe handling)
     scene_cats = output.scene_categories if isinstance(output.scene_categories, list) else []
-    scenes = "\n".join([
-        f"| {s.get('label', '?') if isinstance(s, dict) else s} | **{s.get('probability', 0):.1%}** |" if isinstance(s, dict) else f"| {s} | — |"
-        for s in scene_cats[:5]
-    ]) if scene_cats else "| N/A | — |"
+    scene_lines = []
+    for s in scene_cats[:5]:
+        if isinstance(s, dict):
+            label = s.get('label', '?')
+            prob = s.get('probability', 0)
+            scene_lines.append(f"| {label} | **{fmt_conf(prob, '.1%')}** |")
+        else:
+            scene_lines.append(f"| {s} | — |")
+    scenes = "\n".join(scene_lines) if scene_lines else "| N/A | — |"
     
     # Helper to format distribution (handles dict, list, and edge cases)
     def format_dist(detail, key='distribution'):
         if not detail:
-            return 0, "N/A"
+            return 0, "—"
         dist = detail.get(key, {})
         conf = detail.get('confidence', 0)
         try:
             if isinstance(dist, dict) and dist:
                 sorted_items = sorted(dist.items(), key=lambda x: x[1] if isinstance(x[1], (int, float)) else 0, reverse=True)[:3]
-                dist_str = " | ".join([f"{k}: {v:.0%}" if isinstance(v, (int, float)) else f"{k}: {v}" for k, v in sorted_items])
+                parts = []
+                for k, v in sorted_items:
+                    if isinstance(v, (int, float)) and v > 0:
+                        parts.append(f"{k}: {v:.0%}")
+                    elif v:
+                        parts.append(f"{k}: {v}")
+                dist_str = " | ".join(parts) if parts else "—"
             elif isinstance(dist, list) and dist:
                 # List of dicts like [{'label': 'x', 'count': 10, 'percentage': 0.5}, ...]
                 parts = []
@@ -437,17 +463,17 @@ def format_visual(output: VisualOutput) -> str:
                     if isinstance(d, dict):
                         label = d.get('label', d.get('name', d.get('value', '?')))
                         pct = d.get('percentage', d.get('count', 0))
-                        if isinstance(pct, (int, float)):
+                        if isinstance(pct, (int, float)) and pct > 0:
                             parts.append(f"{label}: {pct:.0%}")
-                        else:
+                        elif pct:
                             parts.append(f"{label}: {pct}")
                     else:
                         parts.append(str(d))
-                dist_str = " | ".join(parts) if parts else "N/A"
+                dist_str = " | ".join(parts) if parts else "—"
             else:
-                dist_str = "N/A"
+                dist_str = "—"
         except Exception:
-            dist_str = "N/A"
+            dist_str = "—"
         return conf, dist_str
     
     # Camera angle distribution with confidence
@@ -500,16 +526,16 @@ def format_visual(output: VisualOutput) -> str:
 
 | Metric | Value | Confidence | Distribution |
 |:-------|:------|:----------:|:-------------|
-| **Camera Angle** | {output.camera_angle} | {camera_conf:.0%} | {camera_dist_str} |
+| **Camera Angle** | {output.camera_angle} | {fmt_conf(camera_conf)} | {camera_dist_str} |
 | **Focal Length** | {output.focal_length_tendency} | — | Wide/Normal/Telephoto |
 
 ### 🎨 Color Analysis
 
 | Metric | Value | Confidence | Distribution |
 |:-------|:------|:----------:|:-------------|
-| **Dominant Hue** | {output.hue_family} | {hue_conf:.0%} | {hue_dist_str} |
-| **Saturation** | {output.saturation_band} | {sat_conf:.0%} | {sat_dist_str} |
-| **Brightness** | {output.brightness_band} | {bright_conf:.0%} | {bright_dist_str} |
+| **Dominant Hue** | {output.hue_family} | {fmt_conf(hue_conf)} | {hue_dist_str} |
+| **Saturation** | {output.saturation_band} | {fmt_conf(sat_conf)} | {sat_dist_str} |
+| **Brightness** | {output.brightness_band} | {fmt_conf(bright_conf)} | {bright_dist_str} |
 | **Contrast** | {output.contrast} | — | Dynamic range |
 | **Color Temp (CCT)** | {output.cct_mean:.0f}K | — | {cct_desc} |
 
@@ -545,20 +571,20 @@ def format_audio(output: AudioOutput) -> str:
     # BGM style detail with confidence (all_scores is a dict)
     bgm_detail = output.bgm_style_detail or {}
     bgm_scores = bgm_detail.get('all_scores', {})
-    bgm_sorted = sorted(bgm_scores.items(), key=lambda x: x[1], reverse=True)[:5] if bgm_scores else []
-    bgm_top3 = "\n".join([f"| {label} | **{score:.1%}** |" for label, score in bgm_sorted]) if bgm_sorted else "| N/A | — |"
+    bgm_sorted = [(k, v) for k, v in sorted(bgm_scores.items(), key=lambda x: x[1], reverse=True)[:5] if v and v > 0] if bgm_scores else []
+    bgm_top3 = "\n".join([f"| {label} | **{fmt_conf(score, '.1%')}** |" for label, score in bgm_sorted]) if bgm_sorted else "| N/A | — |"
     
     # Mood detail with confidence (all_scores is a dict)
     mood_detail = output.mood_detail or {}
     mood_scores = mood_detail.get('all_scores', {})
-    mood_sorted = sorted(mood_scores.items(), key=lambda x: x[1], reverse=True)[:5] if mood_scores else []
-    mood_top3 = "\n".join([f"| {label} | **{score:.1%}** |" for label, score in mood_sorted]) if mood_sorted else "| N/A | — |"
+    mood_sorted = [(k, v) for k, v in sorted(mood_scores.items(), key=lambda x: x[1], reverse=True)[:5] if v and v > 0] if mood_scores else []
+    mood_top3 = "\n".join([f"| {label} | **{fmt_conf(score, '.1%')}** |" for label, score in mood_sorted]) if mood_sorted else "| N/A | — |"
     
     # Instruments detail with confidence (instrument_scores is a dict)
     inst_detail = output.instruments or {}
     inst_scores = inst_detail.get('instrument_scores', {})
-    inst_sorted = sorted(inst_scores.items(), key=lambda x: x[1], reverse=True)[:5] if inst_scores else []
-    inst_top5 = "\n".join([f"| {label} | **{score:.1%}** |" for label, score in inst_sorted]) if inst_sorted else "| N/A | — |"
+    inst_sorted = [(k, v) for k, v in sorted(inst_scores.items(), key=lambda x: x[1], reverse=True)[:5] if v and v > 0] if inst_scores else []
+    inst_top5 = "\n".join([f"| {label} | **{fmt_conf(score, '.1%')}** |" for label, score in inst_sorted]) if inst_sorted else "| N/A | — |"
     
     return f"""## 🎵 Audio Analysis Results
 
@@ -576,7 +602,7 @@ def format_audio(output: AudioOutput) -> str:
 |:------|:----------:|
 {bgm_top3}
 
-**Dominant**: {output.bgm_style} ({output.bgm_style_confidence:.1%})
+**Dominant**: {output.bgm_style} ({fmt_conf(output.bgm_style_confidence, '.1%')})
 
 ### 😊 Mood Analysis (CLAP)
 
@@ -584,7 +610,7 @@ def format_audio(output: AudioOutput) -> str:
 |:-----|:----------:|
 {mood_top3}
 
-**Dominant**: {output.mood} ({output.mood_confidence:.1%})
+**Dominant**: {output.mood} ({fmt_conf(output.mood_confidence, '.1%')})
 
 ### 🎹 Instruments Detection (CLAP)
 
@@ -628,7 +654,7 @@ def format_asr(output: ASROutput) -> str:
 ### 🎭 Emotion Analysis (HuBERT Model)
 | Detected Emotion | Confidence |
 |:----------------:|:----------:|
-| **{emo}** | {conf:.1%} |
+| **{emo}** | {fmt_conf(conf, '.1%')} |
 """
     
     # Prosody section
@@ -680,7 +706,7 @@ def format_yolo(output: YOLOOutput) -> str:
     
     # Objects with confidence
     objects_str = "\n".join([
-        f"| {obj} | {cnt} | {avg_confidence.get(obj, 0):.1%} |"
+        f"| {obj} | {cnt} | {fmt_conf(avg_confidence.get(obj, 0), '.1%')} |"
         for obj, cnt in sorted(object_counts.items(), key=lambda x: x[1], reverse=True)[:10]
     ])
     
@@ -758,7 +784,7 @@ def format_yolo(output: YOLOOutput) -> str:
 
 | Metric | Value | Confidence |
 |:-------|:------|:----------:|
-| **Environment Type** | {environment.get('environment_type', 'N/A')} | {env_conf:.0%} |
+| **Environment Type** | {environment.get('environment_type', 'N/A')} | {fmt_conf(env_conf)} |
 | **Activity Style** | {environment.get('cooking_style', 'N/A')} | — |
 
 ### 📦 Object Detection Statistics
@@ -767,7 +793,7 @@ def format_yolo(output: YOLOOutput) -> str:
 |:-------|:-----:|:------------|
 | **Unique Objects** | {detection.get('unique_objects', 0)} | Different object types found |
 | **Total Detections** | {detection.get('total_detections', 0)} | Total instances across frames |
-| **Avg Confidence** | {sum(avg_confidence.values())/max(len(avg_confidence), 1):.1%} | Mean detection confidence |
+| **Avg Confidence** | {fmt_conf(sum(avg_confidence.values())/max(len(avg_confidence), 1) if avg_confidence else 0, '.1%')} | Mean detection confidence |
 
 ### 📋 Detected Objects (Top 10)
 
@@ -1550,7 +1576,7 @@ def run_all(language: str, progress=gr.Progress()):
     if STATE.yolo_output:
         lines.append(f"🔍 Objects: {STATE.yolo_output.detection.get('unique_objects', 0)}")
     if STATE.ai_output:
-        lines.append(f"🤖 AI: {STATE.ai_output.verdict} ({STATE.ai_output.confidence:.0%})")
+        lines.append(f"🤖 AI: {STATE.ai_output.verdict} ({fmt_conf(STATE.ai_output.confidence)})")
     
     summary = "\n".join(lines)
     choices = get_video_list_choices()
